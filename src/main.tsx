@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import './index.css'
+import { initializeLocalDatabase } from '@/lib/dbService'
+
+// Initialize default state in LocalStorage for demo sandbox
+initializeLocalDatabase()
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,3 +24,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 )
+
