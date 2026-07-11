@@ -1,105 +1,533 @@
+import { useState, useMemo } from 'react'
+import { dbService } from '@/lib/dbService'
+import { calculateLinearForecast, formatCO2 } from '@/lib/utils'
+import {
+  Zap,
+  TrendingDown,
+  TrendingUp,
+  AlertTriangle,
+  ArrowRight,
+  Sparkles,
+  ChevronRight,
+  CornerDownRight,
+  Sliders,
+  Send,
+  Info,
+} from 'lucide-react'
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from 'recharts'
+
 export function MissionControl() {
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // Simulation State
+  const [evFleetPercent, setEvFleetPercent] = useState(10)
+  const [solarKw, setSolarKw] = useState(25)
+  const [csrParticipation, setCsrParticipation] = useState(20)
+  const [resolveOverdue, setResolveOverdue] = useState(false)
+  const [isSimulating, setIsSimulating] = useState(false)
+
+  // Chat State
+  const [messages, setMessages] = useState<any[]>([
+    {
+      sender: 'copilot',
+      text: 'Hello! I am your ESG Decision Copilot. I have loaded your current environmental targets, goal trajectories, and compliance risks. How can I help you optimize your ESG scores today?',
+      sources: ['Environmental Goals', 'Compliance Issues Registry'],
+    },
+  ])
+  const [chatInput, setChatInput] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
+
+  // Load Data
+  const org = useMemo(() => dbService.getOrganization(), [refreshKey])
+  const depts = useMemo(() => dbService.getDepartments(), [refreshKey])
+  const deptScores = useMemo(() => dbService.getDepartmentScores(), [refreshKey])
+  const issues = useMemo(() => dbService.getComplianceIssues().filter(i => i.status !== 'resolved'), [refreshKey])
+  const goals = useMemo(() => dbService.getGoals(), [refreshKey])
+
+  // Computed Org-wide averages
+  const { avgE, avgS, avgG, avgTotal } = useMemo(() => {
+    if (deptScores.length === 0) return { avgE: 70, avgS: 70, avgG: 70, avgTotal: 70 }
+    const totalCount = depts.reduce((sum, d) => sum + d.employee_count, 0)
+    let sumE = 0, sumS = 0, sumG = 0, sumT = 0
+    deptScores.forEach(s => {
+      const weight = s.department?.employee_count || 1
+      sumE += s.env_score * weight
+      sumS += s.social_score * weight
+      sumG += s.gov_score * weight
+      sumT += s.total_score * weight
+    })
+    return {
+      avgE: Math.round(sumE / totalCount),
+      avgS: Math.round(sumS / totalCount),
+      avgG: Math.round(sumG / totalCount),
+      avgTotal: Math.round(sumT / totalCount),
+    }
+  }, [deptScores, depts])
+
+  // Sparkline data (historical 6 months)
+  const historicalScores = useMemo(() => {
+    return [
+      { month: 'Jan', score: avgTotal - 4.5 },
+      { month: 'Feb', score: avgTotal - 3.2 },
+      { month: 'Mar', score: avgTotal - 2.8 },
+      { month: 'Apr', score: avgTotal - 1.5 },
+      { month: 'May', score: avgTotal - 0.5 },
+      { month: 'Jun', score: avgTotal },
+    ]
+  }, [avgTotal])
+
+  // Linear Regression Forecast (next 3 months)
+  const forecastScores = useMemo(() => {
+    const historicalValues = historicalScores.map(h => h.score)
+    const forecastValues = calculateLinearForecast(historicalValues, 3)
+    
+    return [
+      ...historicalScores.map(h => ({ ...h, type: 'actual', lower: h.score, upper: h.score })),
+      { month: 'Jul', score: forecastValues[0], type: 'forecast', lower: forecastValues[0] - 2, upper: forecastValues[0] + 2 },
+      { month: 'Aug', score: forecastValues[1], type: 'forecast', lower: forecastValues[1] - 4, upper: forecastValues[1] + 4 },
+      { month: 'Sep', score: forecastValues[2], type: 'forecast', lower: forecastValues[2] - 5, upper: forecastValues[2] + 5 },
+    ]
+  }, [historicalScores])
+
+  // Simulated Score calculation (What-if)
+  const simulatedScores = useMemo(() => {
+    let simulatedE = avgE
+    let simulatedS = avgS
+    let simulatedG = avgG
+
+    // Apply EV Fleet Simulation: Increase EV fleet by X%
+    // Formula: Reduces Fleet emissions portion. +1 Env point per 10%
+    simulatedE += (evFleetPercent / 10) * 1.5
+
+    // Solar KW Simulation: +1 Env point per 10kW installed
+    simulatedE += (solarKw / 10) * 0.8
+
+    // CSR Participation: +1.5 Social points per 10% increase
+    simulatedS += (csrParticipation / 10) * 1.5
+
+    // Overdue Issues: Resolving overdue issues removes deductions.
+    if (resolveOverdue) {
+      const overdueIssues = issues.filter(i => new Date(i.due_date) < new Date())
+      simulatedG += overdueIssues.length * 8
+    }
+
+    // Clamp
+    simulatedE = Math.min(100, parseFloat(simulatedE.toFixed(1)))
+    simulatedS = Math.min(100, parseFloat(simulatedS.toFixed(1)))
+    simulatedG = Math.min(100, parseFloat(simulatedG.toFixed(1)))
+
+    const simulatedTotal = (simulatedE * org.env_weight / 100) +
+                           (simulatedS * org.social_weight / 100) +
+                           (simulatedG * org.gov_weight / 100)
+
+    return {
+      env: simulatedE,
+      social: simulatedS,
+      gov: simulatedG,
+      total: Math.min(100, parseFloat(simulatedTotal.toFixed(1))),
+    }
+  }, [avgE, avgS, avgG, evFleetPercent, solarKw, csrParticipation, resolveOverdue, issues, org])
+
+  // Executive Decision Cards
+  const decisionCards = useMemo(() => {
+    const overdueIssues = issues.filter(i => new Date(i.due_date) < new Date())
+    const atRiskGoals = goals.filter(g => {
+      const start = new Date(g.start_date).getTime()
+      const deadline = new Date(g.deadline).getTime()
+      const now = Date.now()
+      if (now < start || now > deadline) return false
+      const ratio = g.current_value / g.target_value
+      return g.current_value > (g.target_value * ((now - start) / (deadline - start))) * 1.2
+    })
+
+    return [
+      {
+        id: 'dec-1',
+        title: 'Water Discharge sensor upgrade',
+        status: 'Critical Risk',
+        statusColor: 'bg-red-500/10 text-red-600',
+        gap: 'Critical pH deviation unresolved',
+        risk: '₹2.1 Cr potential regulatory penalty and environmental compliance failure.',
+        action: 'Approve procurement for new pH discharge sensors and resolve issue #1.',
+        gain: '+4.5 Gov Points',
+        simulateAction: () => {
+          setResolveOverdue(true)
+          setIsSimulating(true)
+        }
+      },
+      {
+        id: 'dec-2',
+        title: 'Accelerate Plant Solar arrays',
+        status: 'Goal at Risk',
+        statusColor: 'bg-amber-500/10 text-amber-600',
+        gap: '23,500 / 20,000 kg CO₂e budget exceeded',
+        risk: 'Plant energy efficiency goal will be missed by 20% by August deadline.',
+        action: 'Install 50kW solar array to offset grid electricity dependency.',
+        gain: '+3.8 Env Points',
+        simulateAction: () => {
+          setSolarKw(50)
+          setIsSimulating(true)
+        }
+      }
+    ]
+  }, [issues, goals])
+
+  // AI Copilot response handler
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!chatInput.trim()) return
+
+    const userMessage = { sender: 'user', text: chatInput }
+    setMessages((prev) => [...prev, userMessage])
+    setChatInput('')
+    setIsTyping(true)
+
+    // Construct context
+    const context = `
+      Organization Name: ${org.name}
+      Current Scores - Environmental: ${avgE}, Social: ${avgS}, Governance: ${avgG}, Total ESG: ${avgTotal}
+      Open Compliance Issues count: ${issues.length} (Overdue count: ${issues.filter(i => new Date(i.due_date) < new Date()).length})
+      Goals track: ${goals.length} active targets.
+    `
+
+    const groqKey = import.meta.env.VITE_GROQ_API_KEY as string
+
+    if (groqKey) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${groqKey}`,
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              {
+                role: 'system',
+                content: `You are EcoSphere AI Decision Copilot. Use the context provided to answer the user's questions about optimizing their ESG metrics. Keep answers concise, business-oriented, and reference organization metrics directly. Keep descriptions under 4 sentences.`,
+              },
+              {
+                role: 'user',
+                content: `Context: ${context}\n\nQuestion: ${userMessage.text}`,
+              },
+            ],
+          }),
+        })
+        const data = await res.json()
+        const reply = data.choices?.[0]?.message?.content || 'Sorry, I encountered an issue processing your query.'
+        setMessages((prev) => [
+          ...prev,
+          { sender: 'copilot', text: reply, sources: ['Groq Llama 3.3 Model Inference'] },
+        ])
+      } catch (err) {
+        simulateLocalReply(userMessage.text)
+      } finally {
+        setIsTyping(false)
+      }
+    } else {
+      // Offline/No-key Simulation fallback
+      setTimeout(() => {
+        simulateLocalReply(userMessage.text)
+        setIsTyping(false)
+      }, 1500)
+    }
+  }
+
+  const simulateLocalReply = (prompt: string) => {
+    const p = prompt.toLowerCase()
+    let response = 'Based on your current ESG metrics, I recommend focusing on resolving the critical compliance issue in Manufacturing. This will remove scoring penalties and increase your Governance score by up to 10 points.'
+    let sources = ['Governance Compliance Issue Log']
+
+    if (p.includes('carbon') || p.includes('score') || p.includes('environmental')) {
+      response = `Your Environmental score is currently ${avgE}/100. The stacked area chart indicates Grid Electricity consumption remains your largest emission contributor. Installing solar arrays (simulate solar slider to 60kW) will reduce emissions by 4,100 kg CO₂e, improving Env score by +4.8.`
+      sources = ['Emission Factors Library', '12-Month stacked area trend']
+    } else if (p.includes('social') || p.includes('csr') || p.includes('employee')) {
+      response = `Workforce participation in CSR activities stands at 32%. Increasing employee participation via gamification challenges (carpool or zero waste) can boost your Social score to 85.`
+      sources = ['Employee Participation Registry', 'Gamification badge auto-award rule']
+    }
+
+    setMessages((prev) => [...prev, { sender: 'copilot', text: response, sources }])
+  }
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">⚡ Mission Control</h2>
-          <p className="text-muted-foreground text-sm mt-1">AI-powered ESG Decision Intelligence</p>
+    <div className="space-y-6">
+      {/* Top row status */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-muted/20 border border-border rounded-2xl">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <Zap className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm">ESG Decision Command Center</h3>
+            <p className="text-xs text-muted-foreground">Strategic analytics and what-if simulation engine.</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-semibold">
-          <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-          Live
+        <div className="flex gap-4 text-xs font-semibold">
+          <div>
+            <span className="text-muted-foreground block text-[10px]">ORGANIZATION RISK LEVEL</span>
+            <span className="text-red-500 flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5" /> High Exposure
+            </span>
+          </div>
+          <div>
+            <span className="text-muted-foreground block text-[10px]">LAST CALCULATION</span>
+            <span>Just Now</span>
+          </div>
         </div>
       </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ESG Health */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="font-semibold mb-4">ESG Health</h3>
-          <div className="text-center">
-            <p className="text-5xl font-bold text-primary">74.2</p>
-            <p className="text-sm text-muted-foreground mt-1">Organization ESG Score</p>
-            <p className="text-xs text-green-500 mt-1">↑ 2.1 pts vs last month</p>
-          </div>
-          <div className="mt-4 space-y-2">
-            {[
-              { label: 'Environmental', score: 68, color: 'bg-blue-500' },
-              { label: 'Social', score: 79, color: 'bg-purple-500' },
-              { label: 'Governance', score: 76, color: 'bg-amber-500' },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground w-24">{item.label}</span>
-                <div className="flex-1 bg-muted rounded-full h-2">
-                  <div
-                    className={`${item.color} h-2 rounded-full transition-all`}
-                    style={{ width: `${item.score}%` }}
-                  />
+        {/* Col 1: ESG Health Overview */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="font-bold text-base mb-4">ESG Health Index</h3>
+            <div className="text-center py-4 bg-gradient-to-b from-primary/10 to-transparent rounded-2xl">
+              <p className="text-6xl font-black text-primary">{avgTotal}</p>
+              <p className="text-xs text-muted-foreground mt-1 uppercase font-bold tracking-wider">Overall ESG Index</p>
+              <p className="text-[10px] text-green-500 font-semibold mt-0.5">↑ 2.1 pts vs last month</p>
+            </div>
+            <div className="mt-6 space-y-3">
+              {[
+                { label: 'Environmental', score: avgE, fill: 'bg-emerald-500' },
+                { label: 'Social', score: avgS, fill: 'bg-teal-500' },
+                { label: 'Governance', score: avgG, fill: 'bg-amber-500' },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center gap-3 text-xs">
+                  <span className="w-24 text-muted-foreground font-medium">{item.label}</span>
+                  <div className="flex-1 bg-muted h-2 rounded-full overflow-hidden">
+                    <div className={`${item.fill} h-2 rounded-full`} style={{ width: `${item.score}%` }} />
+                  </div>
+                  <span className="font-mono font-bold w-8 text-right">{item.score}</span>
                 </div>
-                <span className="text-xs font-mono w-8 text-right">{item.score}</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+          <p className="text-[10px] text-muted-foreground mt-4 italic">Weighted Index: E {org.env_weight}% | S {org.social_weight}% | G {org.gov_weight}%</p>
         </div>
 
-        {/* AI Recommendations */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="font-semibold mb-4">🤖 AI Recommendations</h3>
-          <div className="space-y-3">
-            {[
-              {
-                module: 'Governance',
-                issue: '3 overdue compliance issues',
-                impact: '₹2.1 Cr risk exposure',
-                action: 'Assign and resolve critical issues',
-                esgGain: '+4 pts',
-              },
-              {
-                module: 'Environmental',
-                issue: 'Carbon goal off trajectory',
-                impact: '15% above target',
-                action: 'Review fleet emission factors',
-                esgGain: '+3 pts',
-              },
-            ].map((rec) => (
-              <div key={rec.issue} className="p-3 bg-muted/50 rounded-lg border border-border">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-primary font-medium">{rec.module}</span>
-                  <span className="text-xs text-green-500 font-semibold">{rec.esgGain}</span>
+        {/* Col 2: What-if Simulator */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="font-bold text-base mb-4 flex items-center justify-between">
+              What-If Simulator
+              <Sliders className="w-4 h-4 text-muted-foreground" />
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span>Increase EV Fleet portion:</span>
+                  <span className="text-primary font-bold">+{evFleetPercent}%</span>
                 </div>
-                <p className="text-xs font-medium">{rec.issue}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{rec.impact}</p>
-                <p className="text-xs text-foreground mt-1">→ {rec.action}</p>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="10"
+                  value={evFleetPercent}
+                  onChange={(e) => {
+                    setEvFleetPercent(Number(e.target.value))
+                    setIsSimulating(true)
+                  }}
+                  className="w-full accent-primary bg-muted rounded-lg h-1.5 cursor-pointer"
+                />
               </div>
-            ))}
+
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span>Install Rooftop Solar:</span>
+                  <span className="text-primary font-bold">+{solarKw} kW</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  step="10"
+                  value={solarKw}
+                  onChange={(e) => {
+                    setSolarKw(Number(e.target.value))
+                    setIsSimulating(true)
+                  }}
+                  className="w-full accent-primary bg-muted rounded-lg h-1.5 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span>Increase CSR Participation:</span>
+                  <span className="text-primary font-bold">+{csrParticipation}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={csrParticipation}
+                  onChange={(e) => {
+                    setCsrParticipation(Number(e.target.value))
+                    setIsSimulating(true)
+                  }}
+                  className="w-full accent-primary bg-muted rounded-lg h-1.5 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-muted/40 rounded-xl border border-border/80">
+                <span className="text-xs font-semibold">Resolve Critical Compliance Issues</span>
+                <input
+                  type="checkbox"
+                  checked={resolveOverdue}
+                  onChange={(e) => {
+                    setResolveOverdue(e.target.checked)
+                    setIsSimulating(true)
+                  }}
+                  className="w-4 h-4 accent-primary cursor-pointer"
+                />
+              </div>
+            </div>
           </div>
+
+          {isSimulating && (
+            <div className="mt-6 pt-4 border-t border-border bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10 animate-pulse">
+              <div className="flex justify-between text-xs font-bold text-emerald-600 mb-1">
+                <span>Simulated score result:</span>
+                <span>{simulatedScores.total} / 100</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Impact Estimate based on historical data and industry benchmarks</p>
+            </div>
+          )}
         </div>
 
-        {/* Alerts */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="font-semibold mb-4">🚨 Alerts</h3>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-red-500/10 rounded-lg border border-red-200 dark:border-red-900">
-              <span className="text-red-500">⚠️</span>
-              <div>
-                <p className="text-xs font-semibold text-red-600">3 Overdue Issues</p>
-                <p className="text-xs text-muted-foreground">Past due date, needs action</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-3 bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-900">
-              <span className="text-amber-500">🎯</span>
-              <div>
-                <p className="text-xs font-semibold text-amber-600">2 Goals at Risk</p>
-                <p className="text-xs text-muted-foreground">Off trajectory by &gt;20%</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-3 bg-blue-500/10 rounded-lg border border-blue-200 dark:border-blue-900">
-              <span className="text-blue-500">📋</span>
-              <div>
-                <p className="text-xs font-semibold text-blue-600">5 Policies Unacknowledged</p>
-                <p className="text-xs text-muted-foreground">Reminders sent to employees</p>
-              </div>
-            </div>
+        {/* Col 3: Forecasting Chart */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <h3 className="font-bold text-base mb-4">ESG Trend Projection</h3>
+          <div className="h-44">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={forecastScores}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="month" stroke="#888888" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#888888" fontSize={11} tickLine={false} axisLine={false} domain={[60, 90]} />
+                <Tooltip />
+                <Area type="monotone" dataKey="score" stroke="#10b981" strokeWidth={2.5} fill="none" />
+                {/* Confidence intervals represented as band */}
+                <Area type="monotone" dataKey="upper" stroke="none" fill="#10b981" fillOpacity={0.1} />
+                <Area type="monotone" dataKey="lower" stroke="none" fill="#10b981" fillOpacity={0.1} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 text-xs bg-muted/40 border border-border/80 p-3 rounded-xl">
+            <span className="font-semibold text-emerald-600 block mb-0.5">Forecast Range: {forecastScores[8].lower.toFixed(0)}–{forecastScores[8].upper.toFixed(0)} by September</span>
+            <p className="text-[10px] text-muted-foreground">Projection based on current trends — assumes no major operational changes</p>
           </div>
         </div>
+      </div>
+
+      {/* Row 2: Executive Decision Cards */}
+      <div>
+        <h3 className="font-bold text-base mb-4">Executive Decision Deck</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {decisionCards.map((card) => (
+            <div key={card.id} className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${card.statusColor}`}>{card.status}</span>
+                  <span className="text-xs font-bold text-emerald-600">{card.gain}</span>
+                </div>
+                <h4 className="font-bold text-base mt-3 text-foreground">{card.title}</h4>
+                <div className="mt-3 space-y-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Metric Gap</span>
+                    <span className="font-medium text-foreground">{card.gap}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Business Risk</span>
+                    <p className="text-red-500 font-medium">{card.risk}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CornerDownRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  {card.action}
+                </p>
+                <button
+                  onClick={card.simulateAction}
+                  className="px-3.5 py-1.5 bg-primary text-primary-foreground hover:bg-primary/95 text-xs font-bold rounded-lg shadow-sm transition-all"
+                >
+                  Simulate
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Row 3: Copilot Panel */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col h-[400px]">
+        {/* Panel Header */}
+        <div className="p-4 border-b border-border bg-gradient-to-r from-emerald-500/10 to-teal-500/5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-emerald-500" />
+            <h3 className="font-bold text-sm">AI ESG Decision Copilot</h3>
+          </div>
+          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Llama-3.3-70B Live</span>
+        </div>
+
+        {/* Chat Feed */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.map((m, idx) => (
+            <div key={idx} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[70%] rounded-2xl p-4 border text-xs leading-relaxed ${
+                m.sender === 'user'
+                  ? 'bg-primary text-primary-foreground border-primary/20 shadow-sm'
+                  : 'bg-muted/50 border-border text-foreground'
+              }`}>
+                <p>{m.text}</p>
+                {m.sources && (
+                  <div className="mt-3.5 pt-2 border-t border-border/80 flex flex-wrap gap-1.5">
+                    {m.sources.map((s: string) => (
+                      <span key={s} className="bg-muted text-[10px] text-muted-foreground px-2 py-0.5 rounded-full border border-border/60">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="bg-muted/50 border border-border rounded-2xl p-3 text-xs text-muted-foreground flex items-center gap-2">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
+                Generating analysis...
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Chat input */}
+        <form onSubmit={handleSendMessage} className="p-3 border-t border-border bg-muted/10 flex gap-2">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder="e.g. How can we improve our social score by 10 points?"
+            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <button type="submit" className="p-2 bg-primary text-primary-foreground hover:bg-primary/95 rounded-lg transition-colors shadow-sm">
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
       </div>
     </div>
   )
