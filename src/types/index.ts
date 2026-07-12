@@ -323,3 +323,26 @@ export interface XPTransaction {
   org_id: string
   created_at: string
 }
+
+// ─── Training & Development Types ─────────────────────────────────────────────
+
+export type TrainingStatus = 'not_started' | 'in_progress' | 'completed' | 'failed'
+
+export interface TrainingRecord {
+  id: string
+  employee_id: string
+  department_id: string | null
+  title: string
+  provider: string | null
+  category: 'safety' | 'compliance' | 'technical' | 'soft_skills' | 'esg_awareness'
+  duration_hours: number
+  completion_date: string | null
+  status: TrainingStatus
+  score: number | null        // 0-100 if assessed
+  certificate_url: string | null
+  org_id: string
+  created_at: string
+  // joins
+  employee?: Profile
+  department?: Department
+}
