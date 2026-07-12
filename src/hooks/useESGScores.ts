@@ -1,0 +1,87 @@
+import { useState, useEffect, useCallback } from 'react'
+import { dbService } from '@/lib/dbService'
+import type { DepartmentScore, Notification } from '@/types'
+
+export interface ESGScoreSummary {
+  env: number
+  social: number
+  gov: number
+  composite: number
+  trend: 'up' | 'down' | 'flat'
+  lastUpdated: string
+}
+
+/**
+ * Reads ESG scores from the local dbService and refreshes
+ * whenever the component mounts or `refresh()` is called.
+ */
+export function useESGScores() {
+  const [scores, setScores] = useState<ESGScoreSummary | null>(null)
+  const [deptScores, setDeptScores] = useState<DepartmentScore[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    try {
+      const org = dbService.getOrganization()
+      const all = dbService.getDepartmentScores()
+      setDeptScores(all)
+
+      if (all.length > 0) {
+        // Average across departments
+        const avgEnv = all.reduce((s, d) => s + d.env_score, 0) / all.length
+        const avgSocial = all.reduce((s, d) => s + d.social_score, 0) / all.length
+        const avgGov = all.reduce((s, d) => s + d.gov_score, 0) / all.length
+        const wEnv = org.env_weight / 100
+        const wSocial = org.social_weight / 100
+        const wGov = org.gov_weight / 100
+        const composite = avgEnv * wEnv + avgSocial * wSocial + avgGov * wGov
+
+        setScores({
+          env: Math.round(avgEnv * 10) / 10,
+          social: Math.round(avgSocial * 10) / 10,
+          gov: Math.round(avgGov * 10) / 10,
+          composite: Math.round(composite * 10) / 10,
+          trend: composite >= 70 ? 'up' : composite >= 50 ? 'flat' : 'down',
+          lastUpdated: new Date().toISOString(),
+        })
+      } else {
+        setScores({ env: 0, social: 0, gov: 0, composite: 0, trend: 'flat', lastUpdated: new Date().toISOString() })
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  return { scores, deptScores, loading, refresh: load }
+}
+
+/**
+ * Reads unread notifications for the current session user.
+ */
+export function useNotifications() {
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  const load = useCallback(() => {
+    const all = dbService.getNotifications()
+    setNotifications(all)
+    setUnreadCount(all.filter((n) => !n.read).length)
+  }, [])
+
+  const markAllRead = useCallback(() => {
+    dbService.markAllNotificationsRead()
+    load()
+  }, [load])
+
+  const markRead = useCallback((id: string) => {
+    dbService.markNotificationRead(id)
+    load()
+  }, [load])
+
+  useEffect(() => { load() }, [load])
+
+  return { notifications, unreadCount, markAllRead, markRead, refresh: load }
+}
