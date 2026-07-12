@@ -10,26 +10,54 @@ import { MissionControl } from '@/features/mission-control/MissionControl'
 import { ReportsPage } from '@/features/reports/ReportsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
+import { FeatureErrorBoundary } from '@/components/shared/FeatureErrorBoundary'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<AppShell />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard"          element={<DashboardPage />} />
-          <Route path="environmental/*"    element={<EnvironmentalDashboard />} />
-          <Route path="social/*"           element={<SocialDashboard />} />
-          <Route path="governance/*"       element={<GovernanceDashboard />} />
-          <Route path="gamification/*"     element={<GamificationDashboard />} />
-          <Route path="mission-control"    element={<MissionControl />} />
-          <Route path="reports/*"          element={<ReportsPage />} />
-          <Route path="settings/*"         element={<SettingsPage />} />
-          <Route path="*"                  element={<NotFoundPage />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<AppShell />}>
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard"          element={<DashboardPage />} />
+            <Route path="environmental/*"    element={
+              <FeatureErrorBoundary featureName="Environmental tracking">
+                <EnvironmentalDashboard />
+              </FeatureErrorBoundary>
+            } />
+            <Route path="social/*"           element={
+              <FeatureErrorBoundary featureName="Social & CSR">
+                <SocialDashboard />
+              </FeatureErrorBoundary>
+            } />
+            <Route path="governance/*"       element={
+              <FeatureErrorBoundary featureName="Governance">
+                <GovernanceDashboard />
+              </FeatureErrorBoundary>
+            } />
+            <Route path="gamification/*"     element={
+              <FeatureErrorBoundary featureName="Gamification">
+                <GamificationDashboard />
+              </FeatureErrorBoundary>
+            } />
+            <Route path="mission-control"    element={
+              <FeatureErrorBoundary featureName="Mission Control">
+                <MissionControl />
+              </FeatureErrorBoundary>
+            } />
+            <Route path="reports/*"          element={
+              <FeatureErrorBoundary featureName="Reports">
+                <ReportsPage />
+              </FeatureErrorBoundary>
+            } />
+            <Route path="settings/*"         element={<SettingsPage />} />
+            <Route path="*"                  element={<NotFoundPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
 

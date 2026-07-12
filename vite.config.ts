@@ -22,7 +22,7 @@ export default defineConfig({
           // Chart library (large — keep isolated so it can be cached independently)
           'vendor-recharts': ['recharts'],
           // PDF/Excel export utilities (only loaded on Reports page)
-          'vendor-export': ['jspdf', 'html2canvas', 'xlsx'],
+          'vendor-export': ['jspdf', 'html2canvas', 'exceljs'],
           // Radix UI primitives (shared across all features)
           'vendor-radix': [
             '@radix-ui/react-dialog',
