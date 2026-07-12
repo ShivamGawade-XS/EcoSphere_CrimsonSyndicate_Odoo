@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { dbService } from '@/lib/dbService'
+import { queryAI } from '@/lib/groq'
 import {
   formatCO2,
   formatDate,
@@ -230,43 +231,19 @@ export function ReportsPage() {
       Deliver exactly 3-4 professional, insight-driven sentences summarizing their performance and pointing out any risk mitigation strategies.
     `
 
-    const groqKey = (import.meta.env.VITE_GROQ_API_KEY as string) || localStorage.getItem('ecosphere-groq-key')
-
-    if (groqKey) {
-      try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqKey}`,
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are an ESG analyst. Write a concise executive summary paragraph based on the parameters provided. Respond with the summary directly. Do not add conversational intro/outro phrases.',
-              },
-              {
-                role: 'user',
-                content: promptText,
-              },
-            ],
-          }),
-        })
-        const data = await res.json()
-        const reply = data.choices?.[0]?.message?.content || 'Error generating summary.'
-        setAiSummary(reply)
-      } catch (err) {
-        simulateAISummary(totalCarbon, activeCSR, openGov)
-      } finally {
-        setIsGeneratingSummary(false)
-      }
-    } else {
-      setTimeout(() => {
-        simulateAISummary(totalCarbon, activeCSR, openGov)
-        setIsGeneratingSummary(false)
-      }, 1500)
+    try {
+      const response = await queryAI(
+        [
+          { role: 'user', text: promptText }
+        ],
+        'You are an ESG analyst. Write a concise executive summary paragraph based on the parameters provided. Respond with the summary directly. Do not add conversational intro/outro phrases.',
+        { totalCarbon, activeCSR, openGov }
+      )
+      setAiSummary(response.content)
+    } catch {
+      simulateAISummary(totalCarbon, activeCSR, openGov)
+    } finally {
+      setIsGeneratingSummary(false)
     }
   }
 

@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { dbService } from '@/lib/dbService'
+import { queryAI } from '@/lib/groq'
 import { calculateLinearForecast, formatCO2 } from '@/lib/utils'
 import {
   Zap,
@@ -208,47 +209,26 @@ export function MissionControl() {
       Goals track: ${goals.length} active targets.
     `
 
-    const groqKey = (import.meta.env.VITE_GROQ_API_KEY as string) || localStorage.getItem('ecosphere-groq-key')
-
-    if (groqKey) {
-      try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqKey}`,
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              {
-                role: 'system',
-                content: `You are EcoSphere AI Decision Copilot. Use the context provided to answer the user's questions about optimizing their ESG metrics. Keep answers concise, business-oriented, and reference organization metrics directly. Keep descriptions under 4 sentences.`,
-              },
-              {
-                role: 'user',
-                content: `Context: ${context}\n\nQuestion: ${userMessage.text}`,
-              },
-            ],
-          }),
-        })
-        const data = await res.json()
-        const reply = data.choices?.[0]?.message?.content || 'Sorry, I encountered an issue processing your query.'
-        setMessages((prev) => [
-          ...prev,
-          { sender: 'copilot', text: reply, sources: ['Groq Llama 3.3 Model Inference'], ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
-        ])
-      } catch {
-        simulateLocalReply(userMessage.text)
-      } finally {
-        setIsTyping(false)
-      }
-    } else {
-      // Offline/No-key Simulation fallback
-      setTimeout(() => {
-        simulateLocalReply(userMessage.text)
-        setIsTyping(false)
-      }, 1200)
+    // Call proxy Edge Function
+    try {
+      const response = await queryAI(
+        messages.concat(userMessage),
+        `You are EcoSphere AI Decision Copilot. Use the context provided to answer the user's questions about optimizing their ESG metrics. Keep answers concise, business-oriented, and reference organization metrics directly. Keep descriptions under 4 sentences.`,
+        { context }
+      )
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: 'copilot',
+          text: response.content,
+          sources: ['ESG AI Copilot Service (Edge Proxy)'],
+          ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        },
+      ])
+    } catch {
+      simulateLocalReply(userMessage.text)
+    } finally {
+      setIsTyping(false)
     }
   }
 
@@ -522,10 +502,10 @@ export function MissionControl() {
 
         {/* Chat Feed */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {!localStorage.getItem('ecosphere-groq-key') && !import.meta.env.VITE_GROQ_API_KEY && (
+          {(!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('placeholder-project')) && (
             <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-500/20 bg-amber-500/8 text-xs text-amber-600">
               <Info className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>Running in <strong>offline demo mode</strong>. Add your Groq API key in <strong>Settings → Integrations → AI Copilot</strong> to enable live AI responses.</span>
+              <span>Running in <strong>offline demo mode</strong>. Configure your Supabase credentials in your environment variables to enable live server-side AI proxying.</span>
             </div>
           )}
           {messages.map((m, idx) => (

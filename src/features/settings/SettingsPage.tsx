@@ -86,8 +86,6 @@ export function SettingsPage() {
   })
 
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null)
-  const [groqKey, setGroqKey] = useState(() => localStorage.getItem('ecosphere-groq-key') ?? '')
-  const [groqKeySaved, setGroqKeySaved] = useState(false)
   const { theme, setTheme } = useTheme()
   const { success, error: toastError } = useToast()
 
@@ -263,17 +261,7 @@ export function SettingsPage() {
     setTimeout(() => setCopiedTokenId(null), 2000)
   }
 
-  // Groq API key save
-  const handleSaveGroqKey = () => {
-    if (!groqKey.trim()) {
-      toastError('API key required', 'Please enter a valid Groq API key.')
-      return
-    }
-    localStorage.setItem('ecosphere-groq-key', groqKey.trim())
-    setGroqKeySaved(true)
-    setTimeout(() => setGroqKeySaved(false), 2500)
-    success('Groq API key saved', 'The Copilot will now use live AI responses.')
-  }
+
 
   // Factory reset database
   const handleResetDatabase = () => {
@@ -735,43 +723,28 @@ export function SettingsPage() {
 
           {/* Top row: AI Copilot + Theme */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* AI Copilot / Groq Key */}
+            {/* AI Copilot Setup Card */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
                   <Key className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm">AI Copilot — Groq API Key</h3>
-                  <p className="text-[10px] text-muted-foreground">Powers the ESG Decision Copilot in Mission Control</p>
+                  <h3 className="font-bold text-sm">AI Copilot Proxy Status</h3>
+                  <p className="text-[10px] text-muted-foreground">Powered by Supabase Edge Functions & Groq</p>
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Groq API Key</label>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={groqKey}
-                    onChange={e => setGroqKey(e.target.value)}
-                    placeholder="gsk_••••••••••••••••••••••••••"
-                    className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  <button
-                    onClick={handleSaveGroqKey}
-                    className="px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
-                  >
-                    {groqKeySaved ? '✓ Saved' : 'Save Key'}
-                  </button>
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20 text-xs">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span className="text-[10px] text-emerald-400 font-semibold">Secure Edge Proxy Active</span>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Get a free key at <span className="text-primary">console.groq.com</span>. Stored in your browser only.
+                <p className="text-[11px] text-muted-foreground leading-normal mt-2">
+                  All Groq API calls are proxied securely server-side. To update your Groq API key, set it as a Supabase secret:
                 </p>
-                {groqKey && (
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-[10px] text-emerald-400 font-medium">Copilot will use live Llama-3.3-70B inference</span>
-                  </div>
-                )}
+                <div className="p-3 bg-muted border border-border rounded-xl font-mono text-[10px] text-foreground select-all mt-1">
+                  supabase secrets set GROQ_API_KEY=gsk_your_key_here
+                </div>
               </div>
             </div>
 

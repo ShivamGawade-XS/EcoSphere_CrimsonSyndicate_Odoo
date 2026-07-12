@@ -80,16 +80,31 @@ cd EcoSphere_CrimsonSyndicate_Odoo
 npm install
 ```
 
-### Environment Variables
+### Environment Variables & AI Setup
 
-Create a `.env` file in the project root:
+To prevent browser leakages of the Groq API key, all AI calls are proxied securely server-side via a Supabase Edge Function (`ai-query`).
 
-```env
-# Optional: Groq API key for AI features (falls back to simulated insights if not set)
-VITE_GROQ_API_KEY=your_groq_api_key_here
-```
+1. **Supabase client setup**:
+   Create a `.env` file in the project root:
+   ```env
+   VITE_SUPABASE_URL=your_supabase_project_url
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
 
-Get a free Groq API key at [console.groq.com](https://console.groq.com).
+2. **Deploy the Edge Function**:
+   Make sure you have the Supabase CLI installed, then deploy the Edge Function:
+   ```bash
+   supabase functions deploy ai-query
+   ```
+
+3. **Configure the Groq API Key**:
+   Set the API key as a secure secret inside your Supabase project (never expose it with a `VITE_` prefix):
+   ```bash
+   supabase secrets set GROQ_API_KEY=your_groq_api_key_here
+   ```
+   Get a free Groq API key at [console.groq.com](https://console.groq.com).
+
+*Note: If no Supabase connection is active, the app automatically falls back to clean, simulated offline ESG responses.*
 
 ### Running Locally
 
