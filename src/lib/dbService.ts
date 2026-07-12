@@ -572,9 +572,10 @@ export const dbService = {
   },
 
   // Notifications
-  getNotifications: (recipientId: string) => {
+  getNotifications: (recipientId?: string): Notification[] => {
     const list = get<Notification[]>(KEYS.notifications)
-    return list.filter(n => n.recipient_id === recipientId)
+    const targetId = recipientId || dbService.getCurrentUser().id
+    return list.filter(n => n.recipient_id === targetId)
   },
   addNotification: (recipientId: string, type: Notification['type'], title: string, body: string) => {
     const list = get<Notification[]>(KEYS.notifications)
@@ -594,6 +595,11 @@ export const dbService = {
   markNotificationRead: (id: string) => {
     const list = get<Notification[]>(KEYS.notifications)
     set(KEYS.notifications, list.map(n => n.id === id ? { ...n, read: true } : n))
+  },
+  markAllNotificationsRead: () => {
+    const list = get<Notification[]>(KEYS.notifications)
+    const targetId = dbService.getCurrentUser().id
+    set(KEYS.notifications, list.map(n => n.recipient_id === targetId ? { ...n, read: true } : n))
   },
 
   // Department scores

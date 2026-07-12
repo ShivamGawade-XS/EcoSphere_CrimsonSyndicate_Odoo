@@ -14,6 +14,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { useState } from 'react'
+import { dbService } from '@/lib/dbService'
+import { NotificationBell } from '@/components/shared/NotificationBell'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -29,6 +31,8 @@ const navItems = [
 export function AppShell() {
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
+  const currentUser = dbService.getCurrentUser()
+  const userInitials = currentUser.full_name ? currentUser.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'U'
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -98,12 +102,9 @@ export function AppShell() {
             {navItems.find(n => location.pathname.startsWith(n.to))?.label ?? 'EcoSphere AI'}
           </h1>
           <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-lg text-muted-foreground hover:bg-accent transition-colors">
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-            </button>
+            <NotificationBell />
             <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-              A
+              {userInitials}
             </div>
           </div>
         </header>
