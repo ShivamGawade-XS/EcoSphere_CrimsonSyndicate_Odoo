@@ -5,6 +5,7 @@ import {
   CarbonTransaction,
   EnvironmentalGoal,
   EmissionActivityType,
+  SupplierRecord,
 } from '@/types'
 import {
   formatCO2,
@@ -49,29 +50,30 @@ export function EnvironmentalDashboard() {
   // State triggers for refresh
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // Load Data
-  const org = useMemo(() => dbService.getOrganization(), [refreshKey])
-  const depts = useMemo(() => dbService.getDepartments(), [refreshKey])
-  const factors = useMemo(() => dbService.getEmissionFactors(), [refreshKey])
-  const transactions = useMemo(() => dbService.getCarbonTransactions(), [refreshKey])
-  const goals = useMemo(() => dbService.getGoals(), [refreshKey])
-
   // Modals state
   const [showFactorModal, setShowFactorModal] = useState(false)
   const [showTransactionModal, setShowTransactionModal] = useState(false)
   const [showGoalModal, setShowGoalModal] = useState(false)
   const [showSupplierModal, setShowSupplierModal] = useState(false)
+  const [editingTxId, setEditingTxId] = useState<string | null>(null)
+  const [txPage, setTxPage] = useState(1)
+  const txPerPage = 10
 
-  // Supplier Scorecard State — stored in localStorage via dbService key
-  const suppliers = useMemo(() => {
-    try {
-      const raw = localStorage.getItem('ecosphere_suppliers')
-      return raw ? JSON.parse(raw) as SupplierRecord[] : getDefaultSuppliers()
-    } catch {
-      return getDefaultSuppliers()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey])
+  // Load Data
+  const org = useMemo(() => dbService.getOrganization(), [refreshKey])
+  const depts = useMemo(() => dbService.getDepartments(), [refreshKey])
+  const factors = useMemo(() => dbService.getEmissionFactors(), [refreshKey])
+  const transactions = useMemo(() => dbService.getCarbonTransactions(), [refreshKey])
+  const paginatedTxs = useMemo(() => {
+    const start = (txPage - 1) * txPerPage
+    return transactions.slice(start, start + txPerPage)
+  }, [transactions, txPage])
+  const txTotalPages = Math.ceil(transactions.length / txPerPage)
+  const goals = useMemo(() => dbService.getGoals(), [refreshKey])
+
+
+  // Supplier Scorecard State
+  const suppliers = useMemo(() => dbService.getSuppliers(), [refreshKey])
 
   const [newSupplier, setNewSupplier] = useState({
     name: '',
@@ -150,20 +152,42 @@ export function EnvironmentalDashboard() {
     return Object.values(trend)
   }, [transactions])
 
-  // Heatmap: Department x Month emissions grid
+  // Heatmap: Department x Month emissions grid — last 6 months
   const heatmapData = useMemo(() => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
+    const now = new Date()
+    const months: { label: string; year: number; month: number }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push({
+        label: d.toLocaleString('default', { month: 'short' }),
+        year: d.getFullYear(),
+        month: d.getMonth(),
+      })
+    }
     return depts.map(dept => {
       const row: Record<string, any> = { department: dept.name }
-      months.forEach((m, mIdx) => {
+      months.forEach(({ label, year, month }) => {
         const total = transactions
-          .filter(tx => tx.department_id === dept.id && new Date(tx.date).getMonth() === mIdx)
+          .filter(tx => {
+            const d = new Date(tx.date)
+            return tx.department_id === dept.id && d.getFullYear() === year && d.getMonth() === month
+          })
           .reduce((sum, tx) => sum + tx.calculated_emission_kg, 0)
-        row[m] = Math.round(total)
+        row[label] = Math.round(total)
       })
       return row
     })
   }, [depts, transactions])
+
+  const heatmapMonths = useMemo(() => {
+    const now = new Date()
+    const months: string[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push(d.toLocaleString('default', { month: 'short' }))
+    }
+    return months
+  }, [])
 
   // Trjectory check helper
   const checkGoalTrajectory = (g: EnvironmentalGoal) => {
@@ -202,34 +226,23 @@ export function EnvironmentalDashboard() {
   const handleAddSupplier = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newSupplier.name || !newSupplier.country) return
-    const id = `sup_${Date.now()}`
-    const overall = Math.round((newSupplier.envScore * 0.4 + newSupplier.socialScore * 0.3 + newSupplier.govScore * 0.3))
-    const risk: 'low' | 'medium' | 'high' = overall >= 70 ? 'low' : overall >= 50 ? 'medium' : 'high'
-    const updated = [
-      ...suppliers,
-      {
-        id,
-        name: newSupplier.name,
-        category: newSupplier.category,
-        country: newSupplier.country,
-        envScore: Number(newSupplier.envScore),
-        socialScore: Number(newSupplier.socialScore),
-        govScore: Number(newSupplier.govScore),
-        overallScore: overall,
-        riskLevel: risk,
-        lastAudit: newSupplier.lastAudit,
-        certifications: newSupplier.certifications.split(',').map(s => s.trim()).filter(Boolean),
-      }
-    ]
-    localStorage.setItem('ecosphere_suppliers', JSON.stringify(updated))
+    dbService.addSupplier({
+      name: newSupplier.name,
+      category: newSupplier.category,
+      country: newSupplier.country,
+      envScore: Number(newSupplier.envScore),
+      socialScore: Number(newSupplier.socialScore),
+      govScore: Number(newSupplier.govScore),
+      lastAudit: newSupplier.lastAudit,
+      certifications: newSupplier.certifications.split(',').map(s => s.trim()).filter(Boolean),
+    })
     setNewSupplier({ name: '', category: 'Raw Materials', country: '', envScore: 70, socialScore: 70, govScore: 70, lastAudit: new Date().toISOString().split('T')[0], certifications: '' })
     setShowSupplierModal(false)
     setRefreshKey(prev => prev + 1)
   }
 
   const handleDeleteSupplier = (id: string) => {
-    const updated = suppliers.filter((s: SupplierRecord) => s.id !== id)
-    localStorage.setItem('ecosphere_suppliers', JSON.stringify(updated))
+    dbService.deleteSupplier(id)
     setRefreshKey(prev => prev + 1)
   }
 
@@ -258,19 +271,51 @@ export function EnvironmentalDashboard() {
     }
   }
 
+  const startEditTx = (tx: CarbonTransaction) => {
+    setNewTx({
+      department_id: tx.department_id,
+      emission_factor_id: tx.emission_factor_id,
+      quantity: tx.quantity,
+      source_type: tx.source_type,
+      date: tx.date,
+      notes: tx.notes || '',
+    })
+    setEditingTxId(tx.id)
+    setShowTransactionModal(true)
+  }
+
+  const handleDeleteTx = (id: string) => {
+    if (window.confirm("Are you sure you want to delete this carbon transaction?")) {
+      dbService.deleteCarbonTransaction(id)
+      setRefreshKey(prev => prev + 1)
+    }
+  }
+
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTx.department_id || !newTx.emission_factor_id || newTx.quantity <= 0) return
 
-    dbService.addCarbonTransaction({
-      department_id: newTx.department_id,
-      emission_factor_id: newTx.emission_factor_id,
-      quantity: Number(newTx.quantity),
-      source_type: newTx.source_type,
-      date: newTx.date,
-      notes: newTx.notes,
-      auto_calculated: org.auto_emission_calc,
-    })
+    if (editingTxId) {
+      dbService.updateCarbonTransaction(editingTxId, {
+        department_id: newTx.department_id,
+        emission_factor_id: newTx.emission_factor_id,
+        quantity: Number(newTx.quantity),
+        source_type: newTx.source_type,
+        date: newTx.date,
+        notes: newTx.notes,
+        auto_calculated: org.auto_emission_calc,
+      })
+    } else {
+      dbService.addCarbonTransaction({
+        department_id: newTx.department_id,
+        emission_factor_id: newTx.emission_factor_id,
+        quantity: Number(newTx.quantity),
+        source_type: newTx.source_type,
+        date: newTx.date,
+        notes: newTx.notes,
+        auto_calculated: org.auto_emission_calc,
+      })
+    }
 
     setNewTx({
       department_id: depts[0]?.id || '',
@@ -280,6 +325,7 @@ export function EnvironmentalDashboard() {
       date: new Date().toISOString().split('T')[0],
       notes: '',
     })
+    setEditingTxId(null)
     setShowTransactionModal(false)
     setRefreshKey(prev => prev + 1)
   }
@@ -520,25 +566,22 @@ export function EnvironmentalDashboard() {
 
             {/* Heatmap: Grid table */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <h3 className="font-bold text-base mb-4">Department Carbon Intensity Heatmap (kg CO₂e)</h3>
+              <h3 className="font-bold text-base mb-4">Department Carbon Intensity Heatmap — Last 6 Months (kg CO₂e)</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left border-collapse">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
                       <th className="py-3 px-4 font-semibold">Department</th>
-                      <th className="py-3 px-4 font-semibold text-center">Jan</th>
-                      <th className="py-3 px-4 font-semibold text-center">Feb</th>
-                      <th className="py-3 px-4 font-semibold text-center">Mar</th>
-                      <th className="py-3 px-4 font-semibold text-center">Apr</th>
-                      <th className="py-3 px-4 font-semibold text-center">May</th>
-                      <th className="py-3 px-4 font-semibold text-center">Jun</th>
+                      {heatmapMonths.map(m => (
+                        <th key={m} className="py-3 px-4 font-semibold text-center">{m}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {heatmapData.map((row, idx) => (
                       <tr key={idx} className="border-b border-border hover:bg-muted/10 transition-colors">
                         <td className="py-3.5 px-4 font-medium">{row.department}</td>
-                        {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((m) => {
+                        {heatmapMonths.map((m) => {
                           const val = row[m] || 0
                           let cellBg = 'bg-transparent'
                           if (val > 5000) cellBg = 'bg-red-500/10 text-red-700 font-semibold'
@@ -573,17 +616,18 @@ export function EnvironmentalDashboard() {
                   <th className="py-4 px-6 font-semibold">Emissions (kg CO₂e)</th>
                   <th className="py-4 px-6 font-semibold">Method</th>
                   <th className="py-4 px-6 font-semibold">Notes</th>
+                  <th className="py-4 px-6 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {transactions.length === 0 ? (
+                {paginatedTxs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={8} className="py-8 text-center text-muted-foreground">
                       No carbon transactions recorded yet.
                     </td>
                   </tr>
                 ) : (
-                  transactions.map((tx) => (
+                  paginatedTxs.map((tx) => (
                     <tr key={tx.id} className="border-b border-border hover:bg-muted/20 transition-colors">
                       <td className="py-4 px-6 whitespace-nowrap">{formatDate(tx.date)}</td>
                       <td className="py-4 px-6 font-medium">{tx.department?.name || 'Unknown'}</td>
@@ -596,7 +640,7 @@ export function EnvironmentalDashboard() {
                         {tx.quantity.toLocaleString()} {tx.emission_factor?.unit.split('/').pop()}
                       </td>
                       <td className="py-4 px-6 font-bold text-emerald-600">
-                        {tx.calculated_emission_kg.toLocaleString()} kg
+                        {formatCO2(tx.calculated_emission_kg)}
                       </td>
                       <td className="py-4 px-6">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -606,12 +650,49 @@ export function EnvironmentalDashboard() {
                         </span>
                       </td>
                       <td className="py-4 px-6 text-muted-foreground truncate max-w-xs">{tx.notes || '-'}</td>
+                      <td className="py-4 px-6 text-right space-x-2 whitespace-nowrap">
+                        <button
+                          onClick={() => startEditTx(tx)}
+                          className="px-2 py-1 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold rounded transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTx(tx.id)}
+                          className="px-2 py-1 bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-semibold rounded transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
+          {txTotalPages > 1 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/20">
+              <span className="text-xs text-muted-foreground">
+                Page {txPage} of {txTotalPages}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setTxPage(prev => Math.max(1, prev - 1))}
+                  disabled={txPage === 1}
+                  className="px-3 py-1 bg-background border border-border text-xs rounded hover:bg-muted disabled:opacity-50 transition-colors"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setTxPage(prev => Math.min(txTotalPages, prev + 1))}
+                  disabled={txPage === txTotalPages}
+                  className="px-3 py-1 bg-background border border-border text-xs rounded hover:bg-muted disabled:opacity-50 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -724,9 +805,9 @@ export function EnvironmentalDashboard() {
       {/* MODALS */}
       {/* 1. Transaction Modal */}
       {showTransactionModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
-            <h3 className="font-bold text-lg mb-4">Log Carbon Transaction</h3>
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowTransactionModal(false); setEditingTxId(null); }}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-lg mb-4">{editingTxId ? 'Edit Carbon Transaction' : 'Log Carbon Transaction'}</h3>
             <form onSubmit={handleAddTransaction} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1">Department</label>
@@ -793,7 +874,7 @@ export function EnvironmentalDashboard() {
               <div className="flex gap-2 justify-end pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowTransactionModal(false)}
+                  onClick={() => { setShowTransactionModal(false); setEditingTxId(null); }}
                   className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-muted"
                 >
                   Cancel
@@ -812,8 +893,8 @@ export function EnvironmentalDashboard() {
 
       {/* 2. Factor Modal */}
       {showFactorModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowFactorModal(false)}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4">Add Emission Factor</h3>
             <form onSubmit={handleAddFactor} className="space-y-4">
               <div>
@@ -847,7 +928,7 @@ export function EnvironmentalDashboard() {
                   <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1">Factor Value</label>
                   <input
                     type="number"
-                    min="0.000001"
+                    min="0.001"
                     step="any"
                     required
                     value={newFactor.factor_value}
@@ -902,8 +983,8 @@ export function EnvironmentalDashboard() {
 
       {/* 3. Goal Modal */}
       {showGoalModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowGoalModal(false)}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4">Set Sustainability Goal</h3>
             <form onSubmit={handleAddGoal} className="space-y-4">
               <div>
@@ -1116,8 +1197,8 @@ export function EnvironmentalDashboard() {
 
       {/* Add Supplier Modal */}
       {showSupplierModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowSupplierModal(false)}>
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-6 border-b border-border">
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-emerald-500" />
@@ -1226,87 +1307,4 @@ export function EnvironmentalDashboard() {
   )
 }
 
-// ── Supplier types and seed data ────────────────────────────────────────────
-interface SupplierRecord {
-  id: string
-  name: string
-  category: string
-  country: string
-  envScore: number
-  socialScore: number
-  govScore: number
-  overallScore: number
-  riskLevel: 'low' | 'medium' | 'high'
-  lastAudit: string
-  certifications: string[]
-}
 
-function getDefaultSuppliers(): SupplierRecord[] {
-  return [
-    {
-      id: 'sup_001',
-      name: 'Sunrise Steel Pvt. Ltd.',
-      category: 'Raw Materials',
-      country: 'India',
-      envScore: 62,
-      socialScore: 74,
-      govScore: 68,
-      overallScore: 67,
-      riskLevel: 'medium',
-      lastAudit: '2026-04-10',
-      certifications: ['ISO 14001'],
-    },
-    {
-      id: 'sup_002',
-      name: 'GreenPath Logistics',
-      category: 'Logistics',
-      country: 'Germany',
-      envScore: 88,
-      socialScore: 82,
-      govScore: 90,
-      overallScore: 87,
-      riskLevel: 'low',
-      lastAudit: '2026-05-22',
-      certifications: ['ISO 14001', 'SA8000', 'EcoVadis Gold'],
-    },
-    {
-      id: 'sup_003',
-      name: 'ChemCore Industries',
-      category: 'Raw Materials',
-      country: 'China',
-      envScore: 38,
-      socialScore: 45,
-      govScore: 50,
-      overallScore: 43,
-      riskLevel: 'high',
-      lastAudit: '2025-11-05',
-      certifications: [],
-    },
-    {
-      id: 'sup_004',
-      name: 'SolarPower Solutions',
-      category: 'Energy',
-      country: 'India',
-      envScore: 95,
-      socialScore: 80,
-      govScore: 85,
-      overallScore: 88,
-      riskLevel: 'low',
-      lastAudit: '2026-06-01',
-      certifications: ['B Corp', 'ISO 50001'],
-    },
-    {
-      id: 'sup_005',
-      name: 'PackRight Ltd.',
-      category: 'Packaging',
-      country: 'UK',
-      envScore: 72,
-      socialScore: 68,
-      govScore: 75,
-      overallScore: 72,
-      riskLevel: 'low',
-      lastAudit: '2026-03-18',
-      certifications: ['FSC Certified'],
-    },
-  ]
-}

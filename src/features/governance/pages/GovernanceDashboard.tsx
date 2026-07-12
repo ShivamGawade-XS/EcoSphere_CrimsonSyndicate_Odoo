@@ -7,6 +7,7 @@ import {
   IssueSeverity,
   IssueStatus,
   Profile,
+  MaterialityTopic,
 } from '@/types'
 import {
   formatDate,
@@ -51,15 +52,9 @@ export function GovernanceDashboard() {
   const rawIssues = useMemo(() => dbService.getComplianceIssues(), [refreshKey])
 
   // Materiality Matrix State
-  const [materialityTopics, setMaterialityTopics] = useState<MaterialityTopic[]>(() => {
-    try {
-      const raw = localStorage.getItem('ecosphere_materiality_topics')
-      return raw ? JSON.parse(raw) : getDefaultMaterialityTopics()
-    } catch {
-      return getDefaultMaterialityTopics()
-    }
-  })
-  const [selectedTopic, setSelectedTopic] = useState<MaterialityTopic | null>(null)
+  const materialityTopics = useMemo(() => dbService.getMaterialityTopics(), [refreshKey])
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null)
+  const selectedTopic = useMemo(() => materialityTopics.find(t => t.id === selectedTopicId) || null, [materialityTopics, selectedTopicId])
   const [showAddTopicModal, setShowAddTopicModal] = useState(false)
   const [newTopic, setNewTopic] = useState({
     name: '',
@@ -86,6 +81,20 @@ export function GovernanceDashboard() {
   const [showIssueModal, setShowIssueModal] = useState(false)
   const [resolveIssueItem, setResolveIssueItem] = useState<ComplianceIssue | null>(null)
   const [selectedPolicy, setSelectedPolicy] = useState<ESGPolicy | null>(null)
+
+  // Issues search/filter state
+  const [issueSearch, setIssueSearch] = useState('')
+  const [issueSeverityFilter, setIssueSeverityFilter] = useState<'all' | IssueSeverity>('all')
+
+  const filteredIssues = useMemo(() => {
+    return issues.filter(i => {
+      const matchSearch = issueSearch.trim() === '' ||
+        i.title.toLowerCase().includes(issueSearch.toLowerCase()) ||
+        i.description?.toLowerCase().includes(issueSearch.toLowerCase())
+      const matchSeverity = issueSeverityFilter === 'all' || i.severity === issueSeverityFilter
+      return matchSearch && matchSeverity
+    })
+  }, [issues, issueSearch, issueSeverityFilter])
 
   // Form states
   const [newPolicy, setNewPolicy] = useState({
@@ -258,26 +267,29 @@ export function GovernanceDashboard() {
   const handleAddTopic = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTopic.name.trim()) return
-    const topic: MaterialityTopic = {
-      id: `topic_${Date.now()}`,
+    dbService.addMaterialityTopic({
       name: newTopic.name,
       category: newTopic.category,
       stakeholderImpact: Number(newTopic.stakeholderImpact),
       businessImpact: Number(newTopic.businessImpact),
       description: newTopic.description,
-    }
-    const updated = [...materialityTopics, topic]
-    setMaterialityTopics(updated)
-    localStorage.setItem('ecosphere_materiality_topics', JSON.stringify(updated))
+    })
     setNewTopic({ name: '', category: 'environmental', stakeholderImpact: 3, businessImpact: 3, description: '' })
     setShowAddTopicModal(false)
+    setRefreshKey(prev => prev + 1)
   }
 
   const handleDeleteTopic = (id: string) => {
-    const updated = materialityTopics.filter(t => t.id !== id)
-    setMaterialityTopics(updated)
+    dbService.deleteMaterialityTopic(id)
+    if (selectedTopicId === id) setSelectedTopicId(null)
+    setRefreshKey(prev => prev + 1)
+  }
+
+  const handleUpdateTopicImpacts = (id: string, field: 'stakeholderImpact' | 'businessImpact', value: number) => {
+    const all = dbService.getMaterialityTopics()
+    const updated = all.map(t => t.id === id ? { ...t, [field]: value } : t)
     localStorage.setItem('ecosphere_materiality_topics', JSON.stringify(updated))
-    if (selectedTopic?.id === id) setSelectedTopic(null)
+    setRefreshKey(prev => prev + 1)
   }
 
   return (
@@ -531,6 +543,35 @@ export function GovernanceDashboard() {
                     <BookOpen className="w-4 h-4" /> Send Reminder Alert
                   </button>
                 )}
+
+                {/* Pending acknowledgements */}
+                {(() => {
+                  const ackedIds = new Set(acknowledgements.filter(a => a.policy_id === selectedPolicy.id).map(a => a.employee_id))
+                  const pending = profiles.filter(p => !ackedIds.has(p.id))
+                  return pending.length > 0 ? (
+                    <div className="mt-4 border-t border-border pt-4">
+                      <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                        Pending Acknowledgement ({pending.length})
+                      </p>
+                      <ul className="space-y-1.5 max-h-40 overflow-y-auto">
+                        {pending.map(p => (
+                          <li key={p.id} className="flex items-center gap-2 text-xs">
+                            <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center font-bold text-[10px] shrink-0">
+                              {p.full_name.charAt(0)}
+                            </span>
+                            <span className="text-foreground font-medium truncate">{p.full_name}</span>
+                            <span className="text-muted-foreground/60 ml-auto shrink-0">{p.department_id}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="mt-4 border-t border-border pt-4 text-xs text-emerald-500 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> All employees have acknowledged this policy
+                    </div>
+                  )
+                })()}
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground text-sm flex flex-col items-center gap-2">
@@ -583,8 +624,30 @@ export function GovernanceDashboard() {
       )}
 
       {activeTab === 'issues' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {issues.map((i) => {
+        <div>
+          {/* Search + Filter bar */}
+          <div className="flex flex-wrap gap-3 mb-6">
+            <input
+              type="search"
+              placeholder="Search issues…"
+              value={issueSearch}
+              onChange={e => setIssueSearch(e.target.value)}
+              className="flex-1 min-w-[180px] bg-background border border-border rounded-lg px-3 py-2 text-sm"
+            />
+            <select
+              value={issueSeverityFilter}
+              onChange={e => setIssueSeverityFilter(e.target.value as typeof issueSeverityFilter)}
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="all">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredIssues.map((i) => {
             const isOverdue = i.status === 'overdue'
 
             return (
@@ -617,24 +680,38 @@ export function GovernanceDashboard() {
                   </div>
 
                   {i.status !== 'resolved' && (
-                    <button
-                      onClick={() => setResolveIssueItem(i)}
-                      className="text-xs text-primary hover:underline font-bold"
-                    >
-                      Mark Resolved
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setResolveIssueItem(i)}
+                        className="text-xs text-primary hover:underline font-bold"
+                      >
+                        Mark Resolved
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Delete this compliance issue?')) {
+                            dbService.deleteComplianceIssue(i.id)
+                            setRefreshKey(prev => prev + 1)
+                          }
+                        }}
+                        className="text-xs text-red-500 hover:underline font-bold ml-2"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
             )
           })}
+          </div>
         </div>
       )}
 
       {/* RESOLUTION MODAL */}
       {resolveIssueItem && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setResolveIssueItem(null)}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
               <CheckCircle2 className="text-green-500 w-5 h-5" /> Resolve Compliance Issue
             </h3>
@@ -675,8 +752,8 @@ export function GovernanceDashboard() {
 
       {/* POLICY MODAL */}
       {showPolicyModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPolicyModal(false)}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4">Add ESG Policy</h3>
             <form onSubmit={handleAddPolicy} className="space-y-4">
               <div>
@@ -758,8 +835,8 @@ export function GovernanceDashboard() {
 
       {/* AUDIT MODAL */}
       {showAuditModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowAuditModal(false)}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4">Schedule Audit</h3>
             <form onSubmit={handleAddAudit} className="space-y-4">
               <div>
@@ -839,8 +916,8 @@ export function GovernanceDashboard() {
 
       {/* ISSUE MODAL */}
       {showIssueModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowIssueModal(false)}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4">Log Compliance Issue</h3>
             <form onSubmit={handleAddIssue} className="space-y-4">
               <div>
@@ -988,7 +1065,7 @@ export function GovernanceDashboard() {
                   return (
                     <button
                       key={t.id}
-                      onClick={() => setSelectedTopic(t)}
+                      onClick={() => setSelectedTopicId(t.id)}
                       style={{ bottom: `${bottomPct}%`, left: `${leftPct}%` }}
                       className={`absolute w-6 h-6 rounded-full border-2 shadow-lg -translate-x-1/2 translate-y-1/2 flex items-center justify-center text-[10px] text-white font-extrabold transition-all duration-300 transform hover:scale-125 ${
                         isSelected ? 'scale-125 ring-4 ring-primary/30 z-10' : 'z-0'
@@ -1033,14 +1110,33 @@ export function GovernanceDashboard() {
                     }`}>{selectedTopic.category}</p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Interactive sliders to adjust impacts live */}
+                  <div className="space-y-3">
                     <div>
-                      <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Stakeholder Impact</span>
-                      <p className="text-2xl font-extrabold text-foreground mt-1">{selectedTopic.stakeholderImpact} <span className="text-sm text-muted-foreground font-normal">/ 5</span></p>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Stakeholder Impact</span>
+                        <span className="text-lg font-extrabold text-foreground">{selectedTopic.stakeholderImpact}<span className="text-xs text-muted-foreground font-normal"> / 5</span></span>
+                      </div>
+                      <input
+                        type="range" min="1" max="5" step="1"
+                        value={selectedTopic.stakeholderImpact}
+                        onChange={(e) => handleUpdateTopicImpacts(selectedTopic.id, 'stakeholderImpact', Number(e.target.value))}
+                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-emerald-500"
+                      />
+                      <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>Low</span><span>High</span></div>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Business Impact</span>
-                      <p className="text-2xl font-extrabold text-foreground mt-1">{selectedTopic.businessImpact} <span className="text-sm text-muted-foreground font-normal">/ 5</span></p>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Business Impact</span>
+                        <span className="text-lg font-extrabold text-foreground">{selectedTopic.businessImpact}<span className="text-xs text-muted-foreground font-normal"> / 5</span></span>
+                      </div>
+                      <input
+                        type="range" min="1" max="5" step="1"
+                        value={selectedTopic.businessImpact}
+                        onChange={(e) => handleUpdateTopicImpacts(selectedTopic.id, 'businessImpact', Number(e.target.value))}
+                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-amber-500"
+                      />
+                      <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>Low</span><span>High</span></div>
                     </div>
                   </div>
 
@@ -1052,18 +1148,19 @@ export function GovernanceDashboard() {
                   <div className="bg-muted/30 border border-border p-4 rounded-xl">
                     <h5 className="text-xs font-bold uppercase tracking-wider mb-2">Priority Tier</h5>
                     {selectedTopic.businessImpact * selectedTopic.stakeholderImpact >= 16 ? (
-                      <div className="flex items-center gap-2 text-red-700 font-bold text-sm">
-                        <AlertCircle className="w-4 h-4 text-red-500" /> Critical Focus Area
+                      <div className="flex items-center gap-2 text-red-500 font-bold text-sm">
+                        <AlertCircle className="w-4 h-4" /> Critical Focus Area
                       </div>
                     ) : selectedTopic.businessImpact * selectedTopic.stakeholderImpact >= 9 ? (
-                      <div className="flex items-center gap-2 text-amber-700 font-bold text-sm">
-                        <Info className="w-4 h-4 text-amber-500" /> Material Target
+                      <div className="flex items-center gap-2 text-amber-500 font-bold text-sm">
+                        <Info className="w-4 h-4" /> Material Target
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 text-blue-700 font-bold text-sm">
-                        <CheckCircle2 className="w-4 h-4 text-blue-500" /> Monitor / Informational
+                      <div className="flex items-center gap-2 text-blue-500 font-bold text-sm">
+                        <CheckCircle2 className="w-4 h-4" /> Monitor / Informational
                       </div>
                     )}
+                    <p className="text-[10px] text-muted-foreground mt-1">Score: {selectedTopic.businessImpact * selectedTopic.stakeholderImpact} / 25 — drag sliders above to reposition the bubble live.</p>
                   </div>
                 </div>
               ) : (
@@ -1080,8 +1177,8 @@ export function GovernanceDashboard() {
 
       {/* Add Materiality Topic Modal */}
       {showAddTopicModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddTopicModal(false)}>
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-6 border-b border-border">
               <h3 className="font-bold text-lg">Add Materiality Matrix Topic</h3>
               <button onClick={() => setShowAddTopicModal(false)} className="text-muted-foreground hover:text-foreground">
@@ -1160,26 +1257,5 @@ export function GovernanceDashboard() {
       )}
     </div>
   )
-}
-
-// ── Materiality matrix support types & seed ────────────────────────────────
-interface MaterialityTopic {
-  id: string
-  name: string
-  category: 'environmental' | 'social' | 'governance'
-  stakeholderImpact: number // 1 to 5
-  businessImpact: number // 1 to 5
-  description: string
-}
-
-function getDefaultMaterialityTopics(): MaterialityTopic[] {
-  return [
-    { id: 'mt_1', name: 'GHG Emissions & Climate Change', category: 'environmental', stakeholderImpact: 5, businessImpact: 5, description: 'Direct priority given the EU CBAM regulations and national emission compliance guidelines.' },
-    { id: 'mt_2', name: 'Workforce Diversity & inclusion', category: 'social', stakeholderImpact: 4, businessImpact: 3, description: 'Critical for company reputation and social license to operate.' },
-    { id: 'mt_3', name: 'Cybersecurity & Data Privacy', category: 'governance', stakeholderImpact: 5, businessImpact: 4, description: 'Essential protection required to secure corporate IP and prevent regulatory penalties.' },
-    { id: 'mt_4', name: 'Circular Economy & Resource Waste', category: 'environmental', stakeholderImpact: 3, businessImpact: 4, description: 'High business impact to optimize production costs and reduce material wastage.' },
-    { id: 'mt_5', name: 'Business Ethics & Anti-Corruption', category: 'governance', stakeholderImpact: 5, businessImpact: 5, description: 'Zero tolerance policy is vital to operate as a listed entity without risk.' },
-    { id: 'mt_6', name: 'Community Relations & CSR', category: 'social', stakeholderImpact: 3, businessImpact: 2, description: 'Ongoing local initiatives with moderate business impact but key social value.' }
-  ]
 }
 

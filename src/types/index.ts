@@ -346,3 +346,29 @@ export interface TrainingRecord {
   employee?: Profile
   department?: Department
 }
+
+// ─── Supply Chain & Supplier Scorecard Types ──────────────────────────────────
+export interface SupplierRecord {
+  id: string
+  name: string
+  category: string
+  country: string
+  envScore: number
+  socialScore: number
+  govScore: number
+  overallScore: number
+  riskLevel: 'low' | 'medium' | 'high'
+  lastAudit: string
+  certifications: string[]
+}
+
+// ─── Materiality Matrix Types ─────────────────────────────────────────────────
+export interface MaterialityTopic {
+  id: string
+  name: string
+  category: 'environmental' | 'social' | 'governance'
+  stakeholderImpact: number // 1 to 5
+  businessImpact: number // 1 to 5
+  description: string
+}
+

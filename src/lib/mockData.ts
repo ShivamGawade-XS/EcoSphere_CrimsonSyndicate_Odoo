@@ -21,6 +21,8 @@ import {
   ESGPolicy,
   Audit,
   PolicyAcknowledgement,
+  SupplierRecord,
+  MaterialityTopic,
 } from '@/types'
 
 // ─── Default Organizations ────────────────────────────────────
@@ -268,6 +270,17 @@ export const defaultCarbonTransactions: CarbonTransaction[] = [
     notes: 'Outbound product supply cargo shipments',
     created_at: new Date().toISOString(),
   },
+  // Historical data spread across last 6 months for heatmap visibility
+  { id: 'tx-3', org_id: 'org-greentech-123', department_id: 'dept-mfg', emission_factor_id: 'ef-electricity-grid', quantity: 10800, calculated_emission_kg: 8856, auto_calculated: true, source_type: 'manufacturing', date: '2026-05-10', notes: 'May assembly line energy', created_at: new Date().toISOString() },
+  { id: 'tx-4', org_id: 'org-greentech-123', department_id: 'dept-logistics', emission_factor_id: 'ef-truck-freight', quantity: 22000, calculated_emission_kg: 3300, auto_calculated: true, source_type: 'fleet', date: '2026-05-18', notes: 'May freight runs', created_at: new Date().toISOString() },
+  { id: 'tx-5', org_id: 'org-greentech-123', department_id: 'dept-mfg', emission_factor_id: 'ef-electricity-grid', quantity: 11500, calculated_emission_kg: 9430, auto_calculated: true, source_type: 'manufacturing', date: '2026-04-12', notes: 'April production run', created_at: new Date().toISOString() },
+  { id: 'tx-6', org_id: 'org-greentech-123', department_id: 'dept-hr', emission_factor_id: 'ef-electricity-grid', quantity: 2500, calculated_emission_kg: 2050, auto_calculated: true, source_type: 'other', date: '2026-04-20', notes: 'Office energy April', created_at: new Date().toISOString() },
+  { id: 'tx-7', org_id: 'org-greentech-123', department_id: 'dept-mfg', emission_factor_id: 'ef-electricity-grid', quantity: 13200, calculated_emission_kg: 10824, auto_calculated: true, source_type: 'manufacturing', date: '2026-03-08', notes: 'March high-demand production', created_at: new Date().toISOString() },
+  { id: 'tx-8', org_id: 'org-greentech-123', department_id: 'dept-logistics', emission_factor_id: 'ef-truck-freight', quantity: 28000, calculated_emission_kg: 4200, auto_calculated: true, source_type: 'fleet', date: '2026-03-22', notes: 'March distribution runs', created_at: new Date().toISOString() },
+  { id: 'tx-9', org_id: 'org-greentech-123', department_id: 'dept-mfg', emission_factor_id: 'ef-electricity-grid', quantity: 9500, calculated_emission_kg: 7790, auto_calculated: true, source_type: 'manufacturing', date: '2026-02-14', notes: 'Feb manufacturing energy', created_at: new Date().toISOString() },
+  { id: 'tx-10', org_id: 'org-greentech-123', department_id: 'dept-hr', emission_factor_id: 'ef-electricity-grid', quantity: 2100, calculated_emission_kg: 1722, auto_calculated: true, source_type: 'other', date: '2026-02-25', notes: 'Office Feb energy', created_at: new Date().toISOString() },
+  { id: 'tx-11', org_id: 'org-greentech-123', department_id: 'dept-mfg', emission_factor_id: 'ef-electricity-grid', quantity: 14000, calculated_emission_kg: 11480, auto_calculated: true, source_type: 'manufacturing', date: '2026-07-05', notes: 'July production ramp-up', created_at: new Date().toISOString() },
+  { id: 'tx-12', org_id: 'org-greentech-123', department_id: 'dept-logistics', emission_factor_id: 'ef-truck-freight', quantity: 30000, calculated_emission_kg: 4500, auto_calculated: true, source_type: 'fleet', date: '2026-07-15', notes: 'July logistics expansion', created_at: new Date().toISOString() },
 ]
 
 // ─── Default CSR Activities ───────────────────────────────────
@@ -479,3 +492,156 @@ export const defaultAudits: Audit[] = [
     created_at: new Date().toISOString(),
   },
 ]
+
+// ─── Default XP Transactions ──────────────────────────────────
+export const defaultXPTransactions: XPTransaction[] = [
+  {
+    id: 'tx-esg-1',
+    employee_id: 'user-esg',
+    amount: 150,
+    source_type: 'manual',
+    source_id: null,
+    description: 'System Onboarding Welcome Bonus Points',
+    org_id: 'org-greentech-123',
+    created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'tx-esg-2',
+    employee_id: 'user-esg',
+    amount: 200,
+    source_type: 'challenge',
+    source_id: 'chal-1',
+    description: 'Completed Green Office Energy efficiency audit',
+    org_id: 'org-greentech-123',
+    created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'tx-esg-3',
+    employee_id: 'user-esg',
+    amount: 100,
+    source_type: 'manual',
+    source_id: null,
+    description: 'ESG Academy Awareness Starter Module',
+    org_id: 'org-greentech-123',
+    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'tx-ceo-1',
+    employee_id: 'user-ceo',
+    amount: 150,
+    source_type: 'manual',
+    source_id: null,
+    description: 'System Onboarding Welcome Bonus Points',
+    org_id: 'org-greentech-123',
+    created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'tx-mfg-1',
+    employee_id: 'user-mfg-head',
+    amount: 150,
+    source_type: 'manual',
+    source_id: null,
+    description: 'System Onboarding Welcome Bonus Points',
+    org_id: 'org-greentech-123',
+    created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'tx-mfg-2',
+    employee_id: 'user-mfg-head',
+    amount: 400,
+    source_type: 'challenge',
+    source_id: 'chal-2',
+    description: 'Corporate Carbon Footprint Audit Campaign',
+    org_id: 'org-greentech-123',
+    created_at: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'tx-mfg-3',
+    employee_id: 'user-mfg-head',
+    amount: 250,
+    source_type: 'csr_activity',
+    source_id: 'csr-1',
+    description: 'Waste Minimization Scheme Initiative Lead',
+    org_id: 'org-greentech-123',
+    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+]
+
+export const defaultSuppliers: SupplierRecord[] = [
+  {
+    id: 'sup_001',
+    name: 'Sunrise Steel Pvt. Ltd.',
+    category: 'Raw Materials',
+    country: 'India',
+    envScore: 62,
+    socialScore: 74,
+    govScore: 68,
+    overallScore: 67,
+    riskLevel: 'medium',
+    lastAudit: '2026-04-10',
+    certifications: ['ISO 14001'],
+  },
+  {
+    id: 'sup_002',
+    name: 'GreenPath Logistics',
+    category: 'Logistics',
+    country: 'Germany',
+    envScore: 88,
+    socialScore: 82,
+    govScore: 90,
+    overallScore: 87,
+    riskLevel: 'low',
+    lastAudit: '2026-05-22',
+    certifications: ['ISO 14001', 'SA8000', 'EcoVadis Gold'],
+  },
+  {
+    id: 'sup_003',
+    name: 'ChemCore Industries',
+    category: 'Raw Materials',
+    country: 'China',
+    envScore: 38,
+    socialScore: 45,
+    govScore: 50,
+    overallScore: 43,
+    riskLevel: 'high',
+    lastAudit: '2025-11-05',
+    certifications: [],
+  },
+  {
+    id: 'sup_004',
+    name: 'SolarPower Solutions',
+    category: 'Energy',
+    country: 'India',
+    envScore: 95,
+    socialScore: 80,
+    govScore: 85,
+    overallScore: 88,
+    riskLevel: 'low',
+    lastAudit: '2026-06-01',
+    certifications: ['B Corp', 'ISO 50001'],
+  },
+  {
+    id: 'sup_005',
+    name: 'PackRight Ltd.',
+    category: 'Packaging',
+    country: 'UK',
+    envScore: 72,
+    socialScore: 68,
+    govScore: 75,
+    overallScore: 72,
+    riskLevel: 'low',
+    lastAudit: '2026-03-18',
+    certifications: ['FSC Certified'],
+  },
+]
+
+export const defaultMaterialityTopics: MaterialityTopic[] = [
+  { id: 'mt_1', name: 'GHG Emissions & Climate Change', category: 'environmental', stakeholderImpact: 5, businessImpact: 5, description: 'Direct priority given the EU CBAM regulations and national emission compliance guidelines.' },
+  { id: 'mt_2', name: 'Workforce Diversity & inclusion', category: 'social', stakeholderImpact: 4, businessImpact: 3, description: 'Critical for company reputation and social license to operate.' },
+  { id: 'mt_3', name: 'Cybersecurity & Data Privacy', category: 'governance', stakeholderImpact: 5, businessImpact: 4, description: 'Essential protection required to secure corporate IP and prevent regulatory penalties.' },
+  { id: 'mt_4', name: 'Circular Economy & Resource Waste', category: 'environmental', stakeholderImpact: 3, businessImpact: 4, description: 'High business impact to optimize production costs and reduce material wastage.' },
+  { id: 'mt_5', name: 'Business Ethics & Anti-Corruption', category: 'governance', stakeholderImpact: 5, businessImpact: 5, description: 'Zero tolerance policy is vital to operate as a listed entity without risk.' },
+  { id: 'mt_6', name: 'Community Relations & CSR', category: 'social', stakeholderImpact: 3, businessImpact: 2, description: 'Ongoing local initiatives with moderate business impact but key social value.' }
+]
+
+

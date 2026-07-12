@@ -168,16 +168,34 @@ export function GamificationDashboard() {
       {activeTab === 'wallet' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Wallet Balance Card */}
-          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between h-56 bg-gradient-to-br from-emerald-500/10 to-teal-500/5">
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between bg-gradient-to-br from-emerald-500/10 to-teal-500/5">
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs uppercase font-extrabold text-emerald-600 tracking-wider">Employee Green Wallet</span>
                 <Wallet className="w-5 h-5 text-emerald-500" />
               </div>
-              <p className="text-4xl font-extrabold text-foreground mt-4">{currentUser.total_points} Points</p>
-              <p className="text-xs text-muted-foreground mt-1">Total Earned: {currentUser.total_xp} XP</p>
+
+              {/* Points */}
+              <div className="mt-4">
+                <p className="text-3xl font-extrabold text-foreground">{currentUser.total_points}
+                  <span className="text-lg font-bold text-emerald-600 ml-1">Pts</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  🛒 <strong>Points</strong> — used to redeem items from the Reward Catalog
+                </p>
+              </div>
+
+              {/* XP separator */}
+              <div className="mt-3 pt-3 border-t border-border/60">
+                <p className="text-xl font-bold text-teal-500">{currentUser.total_xp}
+                  <span className="text-sm font-bold text-teal-600 ml-1">XP</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  ⚡ <strong>XP</strong> — lifetime experience used for leaderboard ranking &amp; badges
+                </p>
+              </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 mt-3">
               <span className="text-[10px] bg-emerald-500/20 text-emerald-800 px-2.5 py-0.5 rounded font-bold uppercase">
                 Rank #{individualLeaderboard.find(x => x.id === currentUser.id)?.rank || '-'}
               </span>

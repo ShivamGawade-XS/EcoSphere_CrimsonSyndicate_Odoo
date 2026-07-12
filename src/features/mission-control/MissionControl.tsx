@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { dbService } from '@/lib/dbService'
 import { calculateLinearForecast, formatCO2 } from '@/lib/utils'
 import {
@@ -37,15 +37,22 @@ export function MissionControl() {
   const [isSimulating, setIsSimulating] = useState(false)
 
   // Chat State
-  const [messages, setMessages] = useState<any[]>([
+  const [messages, setMessages] = useState<{sender: string; text: string; sources?: string[]; ts: string}[]>([
     {
       sender: 'copilot',
       text: 'Hello! I am your ESG Decision Copilot. I have loaded your current environmental targets, goal trajectories, and compliance risks. How can I help you optimize your ESG scores today?',
       sources: ['Environmental Goals', 'Compliance Issues Registry'],
+      ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ])
   const [chatInput, setChatInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll chat to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isTyping])
 
   // Load Data
   const org = useMemo(() => dbService.getOrganization(), [refreshKey])
@@ -185,9 +192,10 @@ export function MissionControl() {
   // AI Copilot response handler
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!chatInput.trim()) return
+    if (!chatInput.trim() || isTyping) return
 
-    const userMessage = { sender: 'user', text: chatInput }
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const userMessage = { sender: 'user', text: chatInput, ts }
     setMessages((prev) => [...prev, userMessage])
     setChatInput('')
     setIsTyping(true)
@@ -200,7 +208,7 @@ export function MissionControl() {
       Goals track: ${goals.length} active targets.
     `
 
-    const groqKey = import.meta.env.VITE_GROQ_API_KEY as string
+    const groqKey = (import.meta.env.VITE_GROQ_API_KEY as string) || localStorage.getItem('ecosphere-groq-key')
 
     if (groqKey) {
       try {
@@ -228,9 +236,9 @@ export function MissionControl() {
         const reply = data.choices?.[0]?.message?.content || 'Sorry, I encountered an issue processing your query.'
         setMessages((prev) => [
           ...prev,
-          { sender: 'copilot', text: reply, sources: ['Groq Llama 3.3 Model Inference'] },
+          { sender: 'copilot', text: reply, sources: ['Groq Llama 3.3 Model Inference'], ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
         ])
-      } catch (err) {
+      } catch {
         simulateLocalReply(userMessage.text)
       } finally {
         setIsTyping(false)
@@ -240,7 +248,7 @@ export function MissionControl() {
       setTimeout(() => {
         simulateLocalReply(userMessage.text)
         setIsTyping(false)
-      }, 1500)
+      }, 1200)
     }
   }
 
@@ -249,15 +257,31 @@ export function MissionControl() {
     let response = 'Based on your current ESG metrics, I recommend focusing on resolving the critical compliance issue in Manufacturing. This will remove scoring penalties and increase your Governance score by up to 10 points.'
     let sources = ['Governance Compliance Issue Log']
 
-    if (p.includes('carbon') || p.includes('score') || p.includes('environmental')) {
+    if (p.includes('carbon') || p.includes('emission') || p.includes('environmental')) {
       response = `Your Environmental score is currently ${avgE}/100. The stacked area chart indicates Grid Electricity consumption remains your largest emission contributor. Installing solar arrays (simulate solar slider to 60kW) will reduce emissions by 4,100 kg CO₂e, improving Env score by +4.8.`
       sources = ['Emission Factors Library', '12-Month stacked area trend']
-    } else if (p.includes('social') || p.includes('csr') || p.includes('employee')) {
-      response = `Workforce participation in CSR activities stands at 32%. Increasing employee participation via gamification challenges (carpool or zero waste) can boost your Social score to 85.`
-      sources = ['Employee Participation Registry', 'Gamification badge auto-award rule']
+    } else if (p.includes('social') || p.includes('csr') || p.includes('employee') || p.includes('training') || p.includes('workforce')) {
+      response = `Workforce participation in CSR activities stands at 32%. Increasing employee participation via gamification challenges (carpool or zero waste) can boost your Social score to 85. Training completion rates are also a key Social KPI — aim for 70%+ coverage.`
+      sources = ['Employee Participation Registry', 'Gamification badge auto-award rule', 'Training Records']
+    } else if (p.includes('governance') || p.includes('gov') || p.includes('board') || p.includes('risk') || p.includes('oversight')) {
+      response = `Your Governance score (${avgG}/100) is impacted by ${issues.length} open compliance issue(s). Resolving all critical issues and ensuring 100% policy acknowledgements can lift Governance scores by up to 15 points. Aim for quarterly audit coverage.`
+      sources = ['Governance Compliance Dashboard', 'Audit Schedule', 'Policy Acknowledgement Registry']
+    } else if (p.includes('policy') || p.includes('acknowledg') || p.includes('compliance') || p.includes('audit')) {
+      response = `You currently have ${issues.length} unresolved compliance issues. Ensure all employees have acknowledged active ESG policies — overdue policy acknowledgements reduce Governance scoring by 1.2 points per department. Schedule upcoming audits to close gaps.`
+      sources = ['Compliance Issue Registry', 'Policy Management Module', 'Audit Scheduler']
+    } else if (p.includes('score') || p.includes('index') || p.includes('kpi') || p.includes('metric')) {
+      response = `Overall ESG index: ${avgTotal}/100 (E: ${avgE}, S: ${avgS}, G: ${avgG}). Department scoring uses a weighted 40/30/30 formula. Use the What-If Simulator to model the impact of reducing electricity consumption or improving CSR participation.`
+      sources = ['ESG Composite Score Engine', 'Weighting Settings']
+    } else if (p.includes('reward') || p.includes('redeem') || p.includes('point') || p.includes('xp') || p.includes('badge') || p.includes('gamif')) {
+      response = `The Gamification Engine awards XP for completing CSR activities and earning badges. Employees can redeem Reward Catalog items with points. Ensure reward stock is maintained — out-of-stock items reduce participation incentive.`
+      sources = ['Gamification Engine', 'Reward Catalog', 'Leaderboard']
+    } else if (p.includes('supplier') || p.includes('chain') || p.includes('scope 3') || p.includes('scope3')) {
+      response = `Supplier ESG performance affects your Scope 3 emissions and overall Environmental score. Low-rated suppliers contribute to indirect emission risks. Recommend conducting quarterly supplier audits and targeting a minimum 70% green-rated supply chain.`
+      sources = ['Supplier Management Module', 'Scope 3 Emission Factors']
     }
 
-    setMessages((prev) => [...prev, { sender: 'copilot', text: response, sources }])
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    setMessages((prev) => [...prev, { sender: 'copilot', text: response, sources, ts }])
   }
 
   return (
@@ -405,6 +429,19 @@ export function MissionControl() {
               <p className="text-[10px] text-muted-foreground">Impact Estimate based on historical data and industry benchmarks</p>
             </div>
           )}
+
+          <button
+            onClick={() => {
+              setEvFleetPercent(0)
+              setSolarKw(0)
+              setCsrParticipation(0)
+              setResolveOverdue(false)
+              setIsSimulating(false)
+            }}
+            className="mt-4 w-full flex items-center justify-center gap-2 text-xs font-semibold py-2 px-4 rounded-lg border border-border bg-background hover:bg-muted transition-colors text-muted-foreground"
+          >
+            <Sliders className="w-3.5 h-3.5" /> Reset Simulation
+          </button>
         </div>
 
         {/* Col 3: Forecasting Chart */}
@@ -485,14 +522,20 @@ export function MissionControl() {
 
         {/* Chat Feed */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {!localStorage.getItem('ecosphere-groq-key') && !import.meta.env.VITE_GROQ_API_KEY && (
+            <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-500/20 bg-amber-500/8 text-xs text-amber-600">
+              <Info className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>Running in <strong>offline demo mode</strong>. Add your Groq API key in <strong>Settings → Integrations → AI Copilot</strong> to enable live AI responses.</span>
+            </div>
+          )}
           {messages.map((m, idx) => (
-            <div key={idx} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[70%] rounded-2xl p-4 border text-xs leading-relaxed ${
+            <div key={idx} className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'} gap-1`}>
+              <div className={`max-w-[75%] rounded-2xl p-4 border text-xs leading-relaxed ${
                 m.sender === 'user'
                   ? 'bg-primary text-primary-foreground border-primary/20 shadow-sm'
                   : 'bg-muted/50 border-border text-foreground'
               }`}>
-                <p>{m.text}</p>
+                <p className="whitespace-pre-wrap">{m.text}</p>
                 {m.sources && (
                   <div className="mt-3.5 pt-2 border-t border-border/80 flex flex-wrap gap-1.5">
                     {m.sources.map((s: string) => (
@@ -503,16 +546,19 @@ export function MissionControl() {
                   </div>
                 )}
               </div>
+              {m.ts && <span className="text-[10px] text-muted-foreground px-1">{m.ts}</span>}
             </div>
           ))}
           {isTyping && (
-            <div className="flex justify-start">
-              <div className="bg-muted/50 border border-border rounded-2xl p-3 text-xs text-muted-foreground flex items-center gap-2">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
-                Generating analysis...
+            <div className="flex items-start gap-1">
+              <div className="bg-muted/50 border border-border rounded-2xl px-4 py-3 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           )}
+          <div ref={chatEndRef} />
         </div>
 
         {/* Chat input */}

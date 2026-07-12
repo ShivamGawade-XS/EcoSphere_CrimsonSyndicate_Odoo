@@ -51,10 +51,22 @@ export function ReportsPage() {
 
   // Filtered dataset
   const filteredData = useMemo(() => {
+    // Compute date boundary from preset
+    let cutoff: Date | null = null
+    const now = new Date()
+    if (datePreset === '30d') { cutoff = new Date(now); cutoff.setDate(now.getDate() - 30) }
+    else if (datePreset === '90d') { cutoff = new Date(now); cutoff.setDate(now.getDate() - 90) }
+    else if (datePreset === '6m') { cutoff = new Date(now); cutoff.setMonth(now.getMonth() - 6) }
+    else if (datePreset === 'ytd') { cutoff = new Date(now.getFullYear(), 0, 1) }
+    else if (datePreset === '1y') { cutoff = new Date(now); cutoff.setFullYear(now.getFullYear() - 1) }
+
     // Filter Carbon Transactions
     let carbon = transactions
     if (selectedDepts.length > 0) {
       carbon = carbon.filter(tx => selectedDepts.includes(tx.department_id))
+    }
+    if (cutoff) {
+      carbon = carbon.filter(tx => new Date(tx.date) >= cutoff!)
     }
 
     // Filter CSR participations
@@ -65,11 +77,17 @@ export function ReportsPage() {
     if (employeeSearch.trim()) {
       csr = csr.filter(p => p.employee?.full_name.toLowerCase().includes(employeeSearch.toLowerCase()))
     }
+    if (cutoff) {
+      csr = csr.filter(p => new Date(p.created_at) >= cutoff!)
+    }
 
     // Filter Compliance Issues
     let gov = issues
     if (selectedDepts.length > 0) {
       gov = gov.filter(i => i.department_id && selectedDepts.includes(i.department_id))
+    }
+    if (cutoff) {
+      gov = gov.filter(i => new Date(i.created_at) >= cutoff!)
     }
 
     return {
@@ -77,7 +95,7 @@ export function ReportsPage() {
       csr,
       gov
     }
-  }, [selectedDepts, employeeSearch, transactions, participations, issues])
+  }, [selectedDepts, datePreset, employeeSearch, transactions, participations, issues])
 
   // Export CSV
   const handleExportCSV = () => {
@@ -157,7 +175,25 @@ export function ReportsPage() {
   // Export PDF (jsPDF + html2canvas)
   const handleExportPDF = async () => {
     if (!reportRef.current) return
-    const canvas = await html2canvas(reportRef.current, { scale: 2 })
+    const canvas = await html2canvas(reportRef.current, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#0a0a0a', // Dark theme card/background style
+      onclone: (clonedDoc) => {
+        const element = clonedDoc.getElementById('printable-report-area')
+        if (element) {
+          element.style.width = '900px'
+          element.style.maxWidth = 'none'
+          
+          const wrappers = element.querySelectorAll('.overflow-x-auto')
+          wrappers.forEach(w => {
+            (w as HTMLElement).style.overflow = 'visible';
+            (w as HTMLElement).style.width = 'auto';
+          })
+        }
+      }
+    })
     const imgData = canvas.toDataURL('image/png')
     const pdf = new jsPDF('p', 'mm', 'a4')
     const imgWidth = 210
@@ -194,7 +230,7 @@ export function ReportsPage() {
       Deliver exactly 3-4 professional, insight-driven sentences summarizing their performance and pointing out any risk mitigation strategies.
     `
 
-    const groqKey = import.meta.env.VITE_GROQ_API_KEY as string
+    const groqKey = (import.meta.env.VITE_GROQ_API_KEY as string) || localStorage.getItem('ecosphere-groq-key')
 
     if (groqKey) {
       try {
@@ -334,6 +370,35 @@ export function ReportsPage() {
             </div>
           </div>
 
+          {/* Date Range Preset */}
+          <div>
+            <label className="text-xs font-bold text-muted-foreground uppercase block mb-1.5 flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> Date Range
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { key: 'all', label: 'All Time' },
+                { key: '30d', label: 'Last 30d' },
+                { key: '90d', label: 'Last 90d' },
+                { key: '6m', label: 'Last 6mo' },
+                { key: 'ytd', label: 'Year to Date' },
+                { key: '1y', label: 'Last Year' },
+              ].map(p => (
+                <button
+                  key={p.key}
+                  onClick={() => setDatePreset(p.key)}
+                  className={`text-[11px] py-1.5 rounded-lg border font-semibold transition-colors ${
+                    datePreset === p.key
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background border-border text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Employee Search */}
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase block mb-1.5">Employee Search</label>
@@ -373,7 +438,7 @@ export function ReportsPage() {
           </div>
 
           {/* Printable Report Preview */}
-          <div ref={reportRef} className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 print:p-0 print:border-none">
+          <div ref={reportRef} id="printable-report-area" className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 print:p-0 print:border-none">
             {/* Report Header */}
             <div className="flex justify-between items-start border-b border-border/80 pb-6">
               <div>
@@ -413,7 +478,7 @@ export function ReportsPage() {
                             <td className="py-2.5 px-4">{formatDate(tx.date)}</td>
                             <td className="py-2.5 px-4 font-medium">{tx.department?.name}</td>
                             <td className="py-2.5 px-4 capitalize">{tx.source_type}</td>
-                            <td className="py-2.5 px-4 text-right font-semibold text-emerald-600">{tx.calculated_emission_kg.toLocaleString()} kg CO₂e</td>
+                            <td className="py-2.5 px-4 text-right font-semibold text-emerald-600">{formatCO2(tx.calculated_emission_kg)}</td>
                           </tr>
                         ))
                       )}

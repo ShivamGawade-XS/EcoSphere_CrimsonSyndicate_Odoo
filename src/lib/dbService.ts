@@ -23,6 +23,8 @@ import {
   ESGPolicy,
   PolicyAcknowledgement,
   TrainingRecord,
+  SupplierRecord,
+  MaterialityTopic,
 } from '@/types'
 
 // Keys for LocalStorage
@@ -51,6 +53,13 @@ const KEYS = {
   scores: 'ecosphere_department_scores',
   currentUser: 'ecosphere_current_user_id',
   training: 'ecosphere_training_records',
+  suppliers: 'ecosphere_suppliers',
+  materiality: 'ecosphere_materiality_topics',
+  diversity: 'ecosphere_diversity_data',
+  sso: 'ecosphere_sso_config',
+  webhooks: 'ecosphere_webhooks',
+  apiTokens: 'ecosphere_api_tokens',
+  auditLogs: 'ecosphere_audit_logs',
 }
 
 // ─── Initial Database Seeding ─────────────────────────────────
@@ -77,12 +86,39 @@ export function initializeLocalDatabase(force = false) {
   seed(KEYS.rewards, mock.defaultRewards)
   seed(KEYS.redemptions, [])
   seed(KEYS.notifications, [])
-  seed(KEYS.xpTransactions, [])
+  seed(KEYS.xpTransactions, mock.defaultXPTransactions)
   seed(KEYS.issues, mock.defaultComplianceIssues)
   seed(KEYS.audits, mock.defaultAudits)
   seed(KEYS.policies, mock.defaultPolicies)
   seed(KEYS.scores, [])
   seed(KEYS.training, [])
+  seed(KEYS.suppliers, mock.defaultSuppliers)
+  seed(KEYS.materiality, mock.defaultMaterialityTopics)
+  seed(KEYS.diversity, [
+    { department: 'Manufacturing & Operations', Male: 60, Female: 35, Other: 5 },
+    { department: 'Logistics & Supply Chain', Male: 55, Female: 40, Other: 5 },
+    { department: 'Research & Development', Male: 40, Female: 55, Other: 5 },
+    { department: 'Human Resources', Male: 25, Female: 75, Other: 0 },
+  ])
+  seed(KEYS.sso, {
+    enabled: false,
+    idpUrl: 'https://identity.greentech-enterprise.com/sso',
+    issuerId: 'ecosphere-sp',
+    certificate: '-----BEGIN CERTIFICATE-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv...\n-----END CERTIFICATE-----',
+  })
+  seed(KEYS.webhooks, [
+    { id: 'wh-1', name: 'Slack Alerts Integration', url: 'https://hooks.slack.com/services/T00/B00/X00', events: ['issues.created'], created_at: '2026-06-20T11:00:00Z', active: true }
+  ])
+  seed(KEYS.apiTokens, [
+    { id: 'tok-1', name: 'Quarterly Audit Sync', token: 'eco_live_7a3d2e1f4c', scopes: ['read:emissions', 'read:goals'], created_at: '2026-06-15T09:12:00Z', expires_at: '2027-06-15T09:12:00Z' }
+  ])
+  seed(KEYS.auditLogs, [
+    { id: 'log-1', timestamp: '2026-07-12T10:14:02Z', username: 'Sarah Jenkins', action: 'Modified pillar weights: Environmental 40%, Social 30%, Governance 30%', ipAddress: '192.168.1.144', status: 'success' },
+    { id: 'log-2', timestamp: '2026-07-12T09:44:12Z', username: 'Sarah Jenkins', action: 'Approved CSR activity participation request for employee emp-1', ipAddress: '192.168.1.144', status: 'success' },
+    { id: 'log-3', timestamp: '2026-07-12T08:12:55Z', username: 'Sarah Jenkins', action: 'Created new supplier record: Sunrise Steel Pvt. Ltd.', ipAddress: '192.168.1.144', status: 'success' },
+    { id: 'log-4', timestamp: '2026-07-11T16:32:00Z', username: 'Admin System', action: 'Scheduled quarterly internal governance audit', ipAddress: '10.0.4.15', status: 'success' },
+    { id: 'log-5', timestamp: '2026-07-11T14:10:00Z', username: 'David Chen', action: 'Acknowledged ESG Environmental Code of Conduct policy', ipAddress: '192.168.1.102', status: 'success' }
+  ])
 
   // Default active user is the ESG Manager for complete demo experience
   if (!localStorage.getItem(KEYS.currentUser)) {
@@ -91,7 +127,7 @@ export function initializeLocalDatabase(force = false) {
 
   // Calculate initial scores if empty
   const scores = JSON.parse(localStorage.getItem(KEYS.scores) || '[]')
-  if (scores.length === 0) {
+  if (scores.length === 0 || force) {
     recalculateScores()
   }
 }
@@ -126,8 +162,9 @@ export const dbService = {
   getOrganization: (): Organization => {
     return JSON.parse(localStorage.getItem(KEYS.org) || '{}') as Organization
   },
-  updateOrganization: (updated: Organization) => {
-    localStorage.setItem(KEYS.org, JSON.stringify(updated))
+  updateOrganization: (updated: Partial<Organization>) => {
+    const current = JSON.parse(localStorage.getItem(KEYS.org) || '{}') as Organization
+    localStorage.setItem(KEYS.org, JSON.stringify({ ...current, ...updated }))
   },
 
   // Departments
@@ -192,6 +229,27 @@ export const dbService = {
     set(KEYS.txs, [newTx, ...txs])
     recalculateScores()
     return newTx
+  },
+  updateCarbonTransaction: (id: string, tx: Partial<CarbonTransaction>) => {
+    const txs = get<CarbonTransaction[]>(KEYS.txs)
+    const factors = get<EmissionFactor[]>(KEYS.factors)
+    const updated = txs.map(t => {
+      if (t.id === id) {
+        const merged = { ...t, ...tx }
+        const efId = merged.emission_factor_id
+        const factor = factors.find(f => f.id === efId)
+        merged.calculated_emission_kg = merged.quantity * (factor?.factor_value || 0)
+        return merged
+      }
+      return t
+    })
+    set(KEYS.txs, updated)
+    recalculateScores()
+  },
+  deleteCarbonTransaction: (id: string) => {
+    const txs = get<CarbonTransaction[]>(KEYS.txs)
+    set(KEYS.txs, txs.filter(t => t.id !== id))
+    recalculateScores()
   },
 
   // Environmental Goals
@@ -268,7 +326,7 @@ export const dbService = {
     const list = get<EmployeeParticipation[]>(KEYS.participations)
     const users = get<Profile[]>(KEYS.users)
     const acts = get<CSRActivity[]>(KEYS.csr)
-    const org = this ? (this as any).getOrganization() : dbService.getOrganization()
+    const org = dbService.getOrganization()
 
     const itemIndex = list.findIndex(p => p.id === id)
     if (itemIndex === -1) return
@@ -353,6 +411,16 @@ export const dbService = {
   resolveComplianceIssue: (id: string, notes: string) => {
     const list = get<ComplianceIssue[]>(KEYS.issues)
     set(KEYS.issues, list.map(i => i.id === id ? { ...i, status: 'resolved', resolution_notes: notes, updated_at: new Date().toISOString() } : i))
+    recalculateScores()
+  },
+  updateComplianceIssue: (id: string, issue: Partial<ComplianceIssue>) => {
+    const list = get<ComplianceIssue[]>(KEYS.issues)
+    set(KEYS.issues, list.map(i => i.id === id ? { ...i, ...issue, updated_at: new Date().toISOString() } : i))
+    recalculateScores()
+  },
+  deleteComplianceIssue: (id: string) => {
+    const list = get<ComplianceIssue[]>(KEYS.issues)
+    set(KEYS.issues, list.filter(i => i.id !== id))
     recalculateScores()
   },
 
@@ -656,7 +724,93 @@ export const dbService = {
     }
     set(KEYS.training, [newRec, ...list])
     return newRec
-  }
+  },
+
+  // Suppliers
+  getSuppliers: () => get<SupplierRecord[]>(KEYS.suppliers),
+  addSupplier: (sup: Omit<SupplierRecord, 'id' | 'overallScore' | 'riskLevel'>) => {
+    const list = get<SupplierRecord[]>(KEYS.suppliers)
+    const overallScore = Math.round(sup.envScore * 0.4 + sup.socialScore * 0.3 + sup.govScore * 0.3)
+    const riskLevel = overallScore >= 70 ? 'low' : overallScore >= 50 ? 'medium' : 'high'
+    const newSupplier: SupplierRecord = {
+      ...sup,
+      id: `sup-${Date.now()}`,
+      overallScore,
+      riskLevel
+    }
+    set(KEYS.suppliers, [...list, newSupplier])
+    return newSupplier
+  },
+  deleteSupplier: (id: string) => {
+    const list = get<SupplierRecord[]>(KEYS.suppliers)
+    set(KEYS.suppliers, list.filter(s => s.id !== id))
+  },
+
+  // Materiality Topics
+  getMaterialityTopics: () => get<MaterialityTopic[]>(KEYS.materiality),
+  addMaterialityTopic: (topic: Omit<MaterialityTopic, 'id'>) => {
+    const list = get<MaterialityTopic[]>(KEYS.materiality)
+    const newTopic: MaterialityTopic = {
+      ...topic,
+      id: `mt-${Date.now()}`
+    }
+    set(KEYS.materiality, [...list, newTopic])
+    return newTopic
+  },
+  deleteMaterialityTopic: (id: string) => {
+    const list = get<MaterialityTopic[]>(KEYS.materiality)
+    set(KEYS.materiality, list.filter(t => t.id !== id))
+  },
+
+  // Diversity Data
+  getDiversityData: () => get<any[]>(KEYS.diversity),
+  updateDiversityData: (data: any[]) => set(KEYS.diversity, data),
+
+  // SSO configuration
+  getSSOConfig: () => get<any>(KEYS.sso),
+  updateSSOConfig: (cfg: any) => set(KEYS.sso, cfg),
+
+  // Webhooks
+  getWebhooks: () => get<any[]>(KEYS.webhooks),
+  addWebhook: (wh: any) => {
+    const list = get<any[]>(KEYS.webhooks)
+    const newWh = { ...wh, id: `wh-${Date.now()}`, created_at: new Date().toISOString() }
+    set(KEYS.webhooks, [...list, newWh])
+    return newWh
+  },
+  deleteWebhook: (id: string) => {
+    const list = get<any[]>(KEYS.webhooks)
+    set(KEYS.webhooks, list.filter(w => w.id !== id))
+  },
+
+  // API Tokens
+  getApiTokens: () => get<any[]>(KEYS.apiTokens),
+  addApiToken: (tok: any) => {
+    const list = get<any[]>(KEYS.apiTokens)
+    const newTok = { ...tok, id: `tok-${Date.now()}`, created_at: new Date().toISOString() }
+    set(KEYS.apiTokens, [...list, newTok])
+    return newTok
+  },
+  deleteApiToken: (id: string) => {
+    const list = get<any[]>(KEYS.apiTokens)
+    set(KEYS.apiTokens, list.filter(t => t.id !== id))
+  },
+
+  // Audit Logs
+  getAuditLogs: () => get<any[]>(KEYS.auditLogs),
+  addAuditLog: (username: string, action: string, ipAddress: string) => {
+    const list = get<any[]>(KEYS.auditLogs)
+    const newLog = {
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username,
+      action,
+      ipAddress,
+      status: 'success'
+    }
+    set(KEYS.auditLogs, [newLog, ...list])
+    return newLog
+  },
 }
 
 // ─── Badge Auto-Award Checker ────────────────────────────────
@@ -671,11 +825,11 @@ function checkAndAwardBadges(employeeId: string) {
   const csrs = get<EmployeeParticipation[]>(KEYS.participations)
     .filter(p => p.employee_id === employeeId && p.approval_status === 'approved').length
 
-  const badgeAwards = get<BadgeAward[]>(KEYS.badgeAwards)
+  let currentAwards = [...get<BadgeAward[]>(KEYS.badgeAwards)]
   const badgesList = get<Badge[]>(KEYS.badges)
 
   badgesList.forEach(badge => {
-    const alreadyAwarded = badgeAwards.some(a => a.badge_id === badge.id && a.employee_id === employeeId)
+    const alreadyAwarded = currentAwards.some(a => a.badge_id === badge.id && a.employee_id === employeeId)
     if (alreadyAwarded) return
 
     let unlock = false
@@ -689,17 +843,18 @@ function checkAndAwardBadges(employeeId: string) {
 
     if (unlock) {
       const newAward: BadgeAward = {
-        id: `award-${Date.now()}`,
+        id: `award-${Date.now()}-${badge.id}`,
         org_id: 'org-greentech-123',
         badge_id: badge.id,
         employee_id: employeeId,
         awarded_at: new Date().toISOString(),
         awarded_by: null
       }
-      set(KEYS.badgeAwards, [...badgeAwards, newAward])
+      currentAwards.push(newAward)
       dbService.addNotification(employeeId, 'badge_unlocked', `🏆 Badge Unlocked!`, `Congratulations, you unlocked the "${badge.name}" badge!`)
     }
   })
+  set(KEYS.badgeAwards, currentAwards)
 }
 
 // ─── Real-Time ESG Scoring Calculator ──────────────────────────
@@ -722,10 +877,10 @@ export function recalculateScores() {
     if (deptGoals.length > 0) {
       let deductions = 0
       deptGoals.forEach(g => {
-        const ratio = g.current_value / g.target_value
-        if (ratio > 1.0) {
-          deductions += Math.min(30, (ratio - 1.0) * 30)
-        }
+         const ratio = g.current_value / g.target_value
+         if (ratio > 1.0) {
+           deductions += Math.min(30, (ratio - 1.0) * 30)
+         }
       })
       env_score = Math.max(0, 100 - deductions)
     } else {
@@ -736,8 +891,18 @@ export function recalculateScores() {
     const deptEmpCount = Math.max(1, dept.employee_count)
     const deptCSRCount = participations.filter(p => p.employee?.department_id === dept.id).length
     const csrRate = Math.min(1.0, deptCSRCount / deptEmpCount)
-    const trainingRate = 0.85 // default mock rate
-    const diversity = 75 // default diversity percentage
+
+    // Calculate actual training rate based on completed training records for this department
+    const deptTrainings = get<TrainingRecord[]>(KEYS.training).filter(t => {
+      const u = get<Profile[]>(KEYS.users).find(usr => usr.id === t.employee_id)
+      return u?.department_id === dept.id && t.status === 'completed'
+    })
+    const trainingRate = Math.min(1.0, 0.5 + (deptTrainings.length / deptEmpCount))
+
+    // Calculate actual diversity percentage from persistent diversity data
+    const divList = get<any[]>(KEYS.diversity)
+    const deptDiv = divList.find(d => d.department.toLowerCase().includes(dept.name.toLowerCase().split(' ')[0].toLowerCase()))
+    const diversity = deptDiv ? (deptDiv.Female + deptDiv.Other) : 75
 
     const social_score = (csrRate * 40) + (trainingRate * 30) + (diversity * 0.3)
 
@@ -776,7 +941,7 @@ export function recalculateScores() {
                         (gov_score * org.gov_weight / 100)
 
     newScores.push({
-      id: `score-${dept.id}-${Date.now()}`,
+      id: `score-${dept.id}-current`,
       org_id: 'org-greentech-123',
       department_id: dept.id,
       env_score: parseFloat(env_score.toFixed(1)),

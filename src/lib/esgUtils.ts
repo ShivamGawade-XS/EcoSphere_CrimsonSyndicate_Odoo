@@ -75,7 +75,7 @@ export function compositeScore(
   env: number,
   social: number,
   gov: number,
-  weights: { env: number; social: number; gov: number } = { env: 0.4, social: 0.35, gov: 0.25 }
+  weights: { env: number; social: number; gov: number } = { env: 0.4, social: 0.3, gov: 0.3 }
 ): number {
   const total = weights.env + weights.social + weights.gov
   const w = {

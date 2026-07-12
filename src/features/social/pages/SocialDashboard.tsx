@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { dbService } from '@/lib/dbService'
 import {
   CSRActivity,
@@ -92,24 +92,39 @@ export function SocialDashboard() {
 
   const [newTraining, setNewTraining] = useState({
     employeeName: '',
-    departmentName: depts[0]?.name || '',
+    departmentName: '',
     courseName: '',
     date: new Date().toISOString().split('T')[0],
   })
 
-  const [diversityData, setDiversityData] = useState<any[]>([
-    { department: 'Manufacturing', Male: 60, Female: 35, Other: 5 },
-    { department: 'Logistics', Male: 55, Female: 40, Other: 5 },
-    { department: 'R&D', Male: 40, Female: 55, Other: 5 },
-    { department: 'HR', Male: 25, Female: 75, Other: 0 },
-  ])
+  // Sync training department dropdown default once depts load
+  useEffect(() => {
+    if (depts.length > 0 && !newTraining.departmentName) {
+      setNewTraining(prev => ({ ...prev, departmentName: depts[0].name }))
+    }
+  }, [depts, newTraining.departmentName])
+
+  const [diversityData, setDiversityData] = useState<any[]>([])
+
+  // Load and sync diversity data from dbService when refreshKey or depts change
+  useEffect(() => {
+    const data = dbService.getDiversityData()
+    setDiversityData(data || [])
+  }, [refreshKey])
 
   const [newDiversity, setNewDiversity] = useState({
-    department: depts[0]?.name || '',
+    department: '',
     male: 50,
     female: 50,
     other: 0,
   })
+
+  // Sync diversity department dropdown default once depts load
+  useEffect(() => {
+    if (depts.length > 0 && !newDiversity.department) {
+      setNewDiversity(prev => ({ ...prev, department: depts[0].name }))
+    }
+  }, [depts, newDiversity.department])
 
   const [csvStatus, setCsvStatus] = useState('')
   const isManagerOrAdmin = currentUser.role === 'admin' || currentUser.role === 'esg_manager'
@@ -117,7 +132,7 @@ export function SocialDashboard() {
   const overallParticipationRate = useMemo(() => {
     if (depts.length === 0) return 0
     const totalEmployees = depts.reduce((sum, d) => sum + d.employee_count, 0)
-    const distinctParticipants = new Set(participations.filter(p => p.approval_status === 'approved').map(p => p.employee_id)).size
+    const distinctParticipants = new Set(participations.filter(p => p.approval_status === 'approved' || p.approval_status === 'pending').map(p => p.employee_id)).size
     return Math.round((distinctParticipants / totalEmployees) * 100)
   }, [depts, participations])
 
@@ -289,7 +304,7 @@ export function SocialDashboard() {
     })
 
     setShowAddTrainingModal(false)
-    setNewTraining({ employeeName: '', departmentName: depts[0]?.name || '', courseName: '', date: new Date().toISOString().split('T')[0] })
+    setNewTraining({ employeeName: '', departmentName: '', courseName: '', date: new Date().toISOString().split('T')[0] })
     setRefreshKey(prev => prev + 1)
   }
 
@@ -307,6 +322,8 @@ export function SocialDashboard() {
       return d
     })
     setDiversityData(updated)
+    dbService.updateDiversityData(updated)
+    setRefreshKey(prev => prev + 1)
     alert('Diversity metrics updated successfully!')
   }
 
@@ -981,8 +998,8 @@ export function SocialDashboard() {
 
           {/* Certificate Modal */}
           {showCertificateModal && (
-            <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-card border border-border w-full max-w-2xl rounded-2xl shadow-2xl p-8 relative flex flex-col justify-between overflow-hidden">
+            <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowCertificateModal(null)}>
+              <div className="bg-card border border-border w-full max-w-2xl rounded-2xl shadow-2xl p-8 relative flex flex-col justify-between overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => setShowCertificateModal(null)}
                   className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
@@ -1032,8 +1049,8 @@ export function SocialDashboard() {
 
       {/* Add Training Modal */}
       {showAddTrainingModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowAddTrainingModal(false)}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
               <GraduationCap className="text-teal-500 w-5 h-5" /> Log Course Completion
             </h3>
@@ -1102,8 +1119,8 @@ export function SocialDashboard() {
 
       {/* Add CSR Activity Modal */}
       {showActivityModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowActivityModal(false)}>
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
               <Sparkles className="text-teal-500 w-5 h-5" /> Launch CSR Activity
             </h3>

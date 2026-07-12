@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, RadarChart, Radar, PolarGrid, PolarAngleAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -12,16 +12,6 @@ import { ScoreBadge, ScorePill } from '@/components/shared/ScoreBadge'
 import { useESGScores } from '@/hooks/useESGScores'
 import { dbService } from '@/lib/dbService'
 import { formatEmission, relativeDate } from '@/lib/esgUtils'
-
-// ─── Trend chart data (last 6 months) ────────────────────────────────────────
-const trendData = [
-  { month: 'Feb', env: 58, social: 65, gov: 60, composite: 61 },
-  { month: 'Mar', env: 61, social: 67, gov: 62, composite: 63 },
-  { month: 'Apr', env: 63, social: 70, gov: 65, composite: 66 },
-  { month: 'May', env: 65, social: 72, gov: 68, composite: 68 },
-  { month: 'Jun', env: 67, social: 75, gov: 71, composite: 71 },
-  { month: 'Jul', env: 70, social: 78, gov: 74, composite: 74 },
-]
 
 // ─── Quick actions ────────────────────────────────────────────────────────────
 const quickActions = [
@@ -65,34 +55,57 @@ function StatCard({
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export function DashboardPage() {
+  const [refreshKey, setRefreshKey] = useState(0)
   const { scores, deptScores, loading, refresh } = useESGScores()
-  const [org] = useState(() => dbService.getOrganization())
-  const [currentUser] = useState(() => dbService.getCurrentUser())
-  const [issues] = useState(() => dbService.getComplianceIssues())
-  const [goals] = useState(() => dbService.getGoals())
-  const [csrActivities] = useState(() => dbService.getCSRActivities())
-  const [challenges] = useState(() => dbService.getChallenges())
-  const [txs] = useState(() => dbService.getCarbonTransactions())
+  
+  const org = useMemo(() => dbService.getOrganization(), [refreshKey])
+  const currentUser = useMemo(() => dbService.getCurrentUser(), [refreshKey])
+  const issues = useMemo(() => dbService.getComplianceIssues(), [refreshKey])
+  const goals = useMemo(() => dbService.getGoals(), [refreshKey])
+  const csrActivities = useMemo(() => dbService.getCSRActivities(), [refreshKey])
+  const challenges = useMemo(() => dbService.getChallenges(), [refreshKey])
+  const txs = useMemo(() => dbService.getCarbonTransactions(), [refreshKey])
   const [refreshing, setRefreshing] = useState(false)
 
-  const openIssues = issues.filter(i => i.status !== 'resolved').length
-  const criticalIssues = issues.filter(i => i.severity === 'critical' && i.status !== 'resolved').length
-  const activeGoals = goals.filter(g => g.status === 'active').length
-  const activeCSR = csrActivities.filter(a => a.status === 'active').length
-  const activeChallenges = challenges.filter(c => c.status === 'active').length
-  const totalEmissions = txs.reduce((s, t) => s + t.calculated_emission_kg, 0)
+  const openIssues = useMemo(() => issues.filter((i: any) => i.status !== 'resolved').length, [issues])
+  const criticalIssues = useMemo(() => issues.filter((i: any) => i.severity === 'critical' && i.status !== 'resolved').length, [issues])
+  const activeGoals = useMemo(() => goals.filter((g: any) => g.status === 'active').length, [goals])
+  const activeCSR = useMemo(() => csrActivities.filter((a: any) => a.status === 'active').length, [csrActivities])
+  const activeChallenges = useMemo(() => challenges.filter((c: any) => c.status === 'active').length, [challenges])
+  const totalEmissions = useMemo(() => txs.reduce((s: number, t: any) => s + t.calculated_emission_kg, 0), [txs])
 
-  const radarData = deptScores.slice(0, 5).map(d => ({
-    dept: d.department?.name?.split(' ')[0] ?? 'Dept',
-    Environmental: Math.round(d.env_score),
-    Social: Math.round(d.social_score),
-    Governance: Math.round(d.gov_score),
-  }))
+  const radarData = useMemo(() => {
+    return deptScores.slice(0, 5).map(d => ({
+      dept: d.department?.name?.split(' ')[0] ?? 'Dept',
+      Environmental: Math.round(d.env_score),
+      Social: Math.round(d.social_score),
+      Governance: Math.round(d.gov_score),
+    }))
+  }, [deptScores])
+
+  const trendData = useMemo(() => {
+    const composite = scores?.composite ?? 70
+    const env = scores?.env ?? 70
+    const social = scores?.social ?? 70
+    const gov = scores?.gov ?? 70
+    const months = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul']
+    return months.map((month, idx) => {
+      const step = (5 - idx) * 1.5
+      return {
+        month,
+        env: Math.max(0, Math.round((env - step) * 10) / 10),
+        social: Math.max(0, Math.round((social - step) * 10) / 10),
+        gov: Math.max(0, Math.round((gov - step) * 10) / 10),
+        composite: Math.max(0, Math.round((composite - step) * 10) / 10),
+      }
+    })
+  }, [scores])
 
   const handleRefresh = async () => {
     setRefreshing(true)
     await new Promise(r => setTimeout(r, 600))
     refresh()
+    setRefreshKey(prev => prev + 1)
     setRefreshing(false)
   }
 
@@ -100,7 +113,10 @@ export function DashboardPage() {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
-  useEffect(() => { refresh() }, []) // eslint-disable-line
+  useEffect(() => {
+    refresh()
+    setRefreshKey(prev => prev + 1)
+  }, [refresh])
 
   return (
     <div className="space-y-6 animate-fade-in pb-8">
@@ -293,7 +309,7 @@ export function DashboardPage() {
             <a href="/environmental" className="text-xs text-muted-foreground hover:text-emerald-400 transition-colors">View all →</a>
           </div>
           <div className="space-y-3">
-            {goals.filter(g => g.status === 'active').slice(0, 4).map(goal => {
+            {goals.filter((g: any) => g.status === 'active').slice(0, 4).map((goal: any) => {
               const pct = Math.min(100, Math.round((goal.current_value / goal.target_value) * 100))
               const isOnTrack = pct >= 40
               return (
@@ -319,7 +335,7 @@ export function DashboardPage() {
                 </div>
               )
             })}
-            {goals.filter(g => g.status === 'active').length === 0 && (
+            {goals.filter((g: any) => g.status === 'active').length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">No active goals</p>
             )}
           </div>

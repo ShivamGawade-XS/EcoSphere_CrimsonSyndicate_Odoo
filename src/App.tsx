@@ -9,6 +9,7 @@ import { GamificationDashboard } from '@/features/gamification/pages/Gamificatio
 import { MissionControl } from '@/features/mission-control/MissionControl'
 import { ReportsPage } from '@/features/reports/ReportsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
 
 function App() {
   return (
@@ -17,14 +18,15 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="environmental/*" element={<EnvironmentalDashboard />} />
-          <Route path="social/*" element={<SocialDashboard />} />
-          <Route path="governance/*" element={<GovernanceDashboard />} />
-          <Route path="gamification/*" element={<GamificationDashboard />} />
-          <Route path="mission-control" element={<MissionControl />} />
-          <Route path="reports/*" element={<ReportsPage />} />
-          <Route path="settings/*" element={<SettingsPage />} />
+          <Route path="dashboard"          element={<DashboardPage />} />
+          <Route path="environmental/*"    element={<EnvironmentalDashboard />} />
+          <Route path="social/*"           element={<SocialDashboard />} />
+          <Route path="governance/*"       element={<GovernanceDashboard />} />
+          <Route path="gamification/*"     element={<GamificationDashboard />} />
+          <Route path="mission-control"    element={<MissionControl />} />
+          <Route path="reports/*"          element={<ReportsPage />} />
+          <Route path="settings/*"         element={<SettingsPage />} />
+          <Route path="*"                  element={<NotFoundPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
