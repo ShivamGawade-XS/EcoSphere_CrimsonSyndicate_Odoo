@@ -294,7 +294,7 @@ export function calculateGovernanceScore(
     (s, a) => s + Math.max(0, a.critical - Math.min(a.critical, a.resolved)),
     0
   )
-  let auditRate = totalFindings === 0
+  const auditRate = totalFindings === 0
     ? 1.0
     : clamp(safeDivide(totalResolved, totalFindings), 0, 1)
 

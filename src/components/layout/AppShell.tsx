@@ -23,14 +23,14 @@ import { LiveIndicator } from '@/components/shared/LiveIndicator'
 import { useToast } from '@/contexts/ToastContext'
 
 const navItems = [
-  { to: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/mission-control', icon: Zap,            label: 'Mission Control' },
-  { to: '/environmental',  icon: Leaf,            label: 'Environmental' },
-  { to: '/social',         icon: Users,           label: 'Social' },
-  { to: '/governance',     icon: Shield,          label: 'Governance' },
-  { to: '/gamification',   icon: Trophy,          label: 'Gamification' },
-  { to: '/reports',        icon: BarChart3,       label: 'Reports' },
-  { to: '/settings',       icon: Settings,        label: 'Settings' },
+  { to: '/app/dashboard',      icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/app/mission-control', icon: Zap,            label: 'Mission Control' },
+  { to: '/app/environmental',  icon: Leaf,            label: 'Environmental' },
+  { to: '/app/social',         icon: Users,           label: 'Social' },
+  { to: '/app/governance',     icon: Shield,          label: 'Governance' },
+  { to: '/app/gamification',   icon: Trophy,          label: 'Gamification' },
+  { to: '/app/reports',        icon: BarChart3,       label: 'Reports' },
+  { to: '/app/settings',       icon: Settings,        label: 'Settings' },
 ]
 
 const AVAILABLE_TENANTS = [

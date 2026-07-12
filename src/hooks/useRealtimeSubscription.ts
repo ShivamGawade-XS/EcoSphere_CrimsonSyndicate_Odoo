@@ -67,7 +67,7 @@ export function useRealtimeSubscription<T = Record<string, unknown>>(
 
     const channelName = `${table}:${filter ?? 'all'}`
 
-    let channelConfig = supabase.channel(channelName).on(
+    const channelConfig = supabase.channel(channelName).on(
       'postgres_changes' as any,
       {
         event:  '*',

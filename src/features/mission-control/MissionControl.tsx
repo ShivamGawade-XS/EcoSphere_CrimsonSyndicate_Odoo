@@ -6,6 +6,7 @@ import { buildESGContext } from '@/lib/ai/context-builder'
 import { buildSystemPrompt, buildStarterQuestions } from '@/lib/ai/system-prompt'
 import { holtsWintersForecast } from '@/lib/forecasting/holt-winters'
 import { detectAnomalies } from '@/lib/forecasting/anomaly-detector'
+import { WhatIfSimulator } from './WhatIfSimulator'
 import {
   Zap,
   TrendingDown,
@@ -36,6 +37,7 @@ import {
 
 export function MissionControl() {
   const [refreshKey, setRefreshKey] = useState(0)
+  const [subTab, setSubTab] = useState<'deck' | 'whatif'>('deck')
 
   // Simulation State
   const [evFleetPercent, setEvFleetPercent] = useState(10)
@@ -374,7 +376,35 @@ export function MissionControl() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Sub-Tab Switcher */}
+      <div className="flex border-b border-border">
+        <button
+          onClick={() => setSubTab('deck')}
+          className={`px-5 py-3 text-sm font-semibold border-b-2 -mb-[2px] transition-colors ${
+            subTab === 'deck'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Command Deck
+        </button>
+        <button
+          onClick={() => setSubTab('whatif')}
+          className={`px-5 py-3 text-sm font-semibold border-b-2 -mb-[2px] transition-colors ${
+            subTab === 'whatif'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          What-If Simulator
+        </button>
+      </div>
+
+      {subTab === 'whatif' ? (
+        <WhatIfSimulator />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Col 1: ESG Health Overview */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between">
           <div>
@@ -728,6 +758,8 @@ export function MissionControl() {
           </div>
         </form>
       </div>
+        </>
+      )}
     </div>
   )
 }

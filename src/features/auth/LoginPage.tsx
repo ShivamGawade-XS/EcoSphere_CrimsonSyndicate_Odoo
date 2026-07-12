@@ -20,7 +20,7 @@ export function LoginPage() {
     setLoading(true)
     setTimeout(() => {
       setLoading(false)
-      navigate('/dashboard')
+      navigate('/app/dashboard')
     }, 1200)
   }
 

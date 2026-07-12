@@ -108,6 +108,10 @@
   0%   { background-position: -200% center; }
   100% { background-position: 200% center; }
 }
+@keyframes float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%       { transform: translateY(-24px) scale(1.04); }
+}
 
 .animate-fade-in       { animation: fade-in 0.25s ease-out both; }
 .animate-slide-in-top  { animation: slide-in-from-top 0.2s ease-out both; }

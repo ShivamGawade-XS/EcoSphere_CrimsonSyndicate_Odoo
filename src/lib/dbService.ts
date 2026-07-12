@@ -64,6 +64,7 @@ const KEYS = {
   integrityChecksums: 'ecosphere_integrity_checksums',
   odooConfig: 'ecosphere_odoo_config',
   odooLogs: 'ecosphere_odoo_logs',
+  whatIfScenarios: 'ecosphere_what_if_scenarios',
 }
 
 // ─── Initial Database Seeding ─────────────────────────────────
@@ -1043,6 +1044,19 @@ export const dbService = {
     dbService.addOdooLog('Manual backfill sync initiated', `Synced ${createdCount} records from ${startDate} to ${endDate}. Total emissions: ${Math.round(totalEmissions)} kg CO₂e`, 'success')
     return { transactionsCreated: createdCount, totalEmissions: Math.round(totalEmissions) }
   },
+
+  // What-If Scenarios
+  getWhatIfScenarios: () => get<any[]>(KEYS.whatIfScenarios) || [],
+  saveWhatIfScenario: (scenario: any) => {
+    const list = dbService.getWhatIfScenarios()
+    const newScenario = {
+      ...scenario,
+      id: scenario.id || `wis-${Date.now()}`,
+      created_at: new Date().toISOString()
+    }
+    set(KEYS.whatIfScenarios, [...list, newScenario])
+    return newScenario
+  },
 }
 
 // ─── Badge Auto-Award Checker ────────────────────────────────
@@ -1057,7 +1071,7 @@ function checkAndAwardBadges(employeeId: string) {
   const csrs = get<EmployeeParticipation[]>(KEYS.participations)
     .filter(p => p.employee_id === employeeId && p.approval_status === 'approved').length
 
-  let currentAwards = [...get<BadgeAward[]>(KEYS.badgeAwards)]
+  const currentAwards = [...get<BadgeAward[]>(KEYS.badgeAwards)]
   const badgesList = get<Badge[]>(KEYS.badges)
 
   badgesList.forEach(badge => {
