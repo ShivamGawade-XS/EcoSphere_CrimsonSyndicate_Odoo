@@ -17,6 +17,10 @@ import {
   DepartmentScore,
   Notification,
   XPTransaction,
+  ComplianceIssue,
+  ESGPolicy,
+  Audit,
+  PolicyAcknowledgement,
 } from '@/types'
 
 // ─── Default Organizations ────────────────────────────────────

@@ -21,6 +21,7 @@ import {
   ComplianceIssue,
   Audit,
   ESGPolicy,
+  PolicyAcknowledgement,
 } from '@/types'
 
 // Keys for LocalStorage
@@ -45,6 +46,7 @@ const KEYS = {
   issues: 'ecosphere_compliance_issues',
   audits: 'ecosphere_audits',
   policies: 'ecosphere_policies',
+  acknowledgements: 'ecosphere_policy_acknowledgements',
   scores: 'ecosphere_department_scores',
   currentUser: 'ecosphere_current_user_id',
 }
@@ -653,7 +655,6 @@ export function recalculateScores() {
   const depts = get<Department[]>(KEYS.depts).filter(d => d.status === 'active')
   const org = dbService.getOrganization()
   const goals = get<EnvironmentalGoal[]>(KEYS.goals).filter(g => g.status === 'active')
-  const txs = get<CarbonTransaction[]>(KEYS.txs)
   const participations = get<EmployeeParticipation[]>(KEYS.participations).filter(p => p.approval_status === 'approved')
   const issues = get<ComplianceIssue[]>(KEYS.issues).filter(i => i.status !== 'resolved')
   const audits = get<Audit[]>(KEYS.audits)
