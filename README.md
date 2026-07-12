@@ -133,12 +133,12 @@ src/
 
 ## 👥 Team — CrimsonSyndicate
 
-| Member | Role | Contribution |
-|---|---|---|
-| **Shivam Gawade** | Team Lead & Full-Stack | Core architecture, all ESG feature modules, AI integration |
-| **Ashwith** | Frontend & Types | TypeScript type system, domain modelling, UI fixes |
-| **Rahul** | Documentation & QA | README, API docs, testing, build verification |
-| **Sharan** | DevOps & Utilities | Build config, Vite optimization, shared utility library |
+| Member | GitHub | Email | Role | Contribution |
+|---|---|---|---|---|
+| **Shivam Mahesh Gawade** | [@ShivamGawade-XS](https://github.com/ShivamGawade-XS) | 24ec25@aitdgoa.edu.in | Team Lead & Full-Stack | Core architecture, all ESG feature modules, AI integration |
+| **Ashwith Ashok Shetty** | [@24co35-ops](https://github.com/24co35-ops) | 24co35@aitdgoa.edu.in | Frontend & Types | TypeScript type system, domain modelling, runtime type guards |
+| **Rahul Rathod** | [@24ec17-svg](https://github.com/24ec17-svg) | 24ec17@aitdgoa.edu.in | Documentation & QA | README, project docs, testing, build verification |
+| **Sharan Andrade** | [@24ec23-shade](https://github.com/24ec23-shade) | 24ec23@aitdgoa.edu.in | DevOps & Utilities | Build config, Vite chunk optimization, shared ESG utility library |
 
 ---
 
