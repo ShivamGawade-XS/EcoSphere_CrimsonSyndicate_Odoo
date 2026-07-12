@@ -24,6 +24,7 @@ import {
   Search,
   UserCheck,
   Info,
+  Trash2,
 } from 'lucide-react'
 import {
   BarChart,
@@ -37,7 +38,7 @@ import {
 } from 'recharts'
 
 export function GovernanceDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'policies' | 'audits' | 'issues'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'policies' | 'audits' | 'issues' | 'materiality'>('overview')
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Load Data
@@ -48,6 +49,25 @@ export function GovernanceDashboard() {
   const acknowledgements = useMemo(() => dbService.getAcknowledgements(), [refreshKey])
   const audits = useMemo(() => dbService.getAudits(), [refreshKey])
   const rawIssues = useMemo(() => dbService.getComplianceIssues(), [refreshKey])
+
+  // Materiality Matrix State
+  const [materialityTopics, setMaterialityTopics] = useState<MaterialityTopic[]>(() => {
+    try {
+      const raw = localStorage.getItem('ecosphere_materiality_topics')
+      return raw ? JSON.parse(raw) : getDefaultMaterialityTopics()
+    } catch {
+      return getDefaultMaterialityTopics()
+    }
+  })
+  const [selectedTopic, setSelectedTopic] = useState<MaterialityTopic | null>(null)
+  const [showAddTopicModal, setShowAddTopicModal] = useState(false)
+  const [newTopic, setNewTopic] = useState({
+    name: '',
+    category: 'environmental' as 'environmental' | 'social' | 'governance',
+    stakeholderImpact: 3,
+    businessImpact: 3,
+    description: '',
+  })
 
   // Derive "Overdue" status in code to match DB trigger
   const issues = useMemo(() => {
@@ -235,6 +255,31 @@ export function GovernanceDashboard() {
     setRefreshKey(prev => prev + 1)
   }
 
+  const handleAddTopic = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newTopic.name.trim()) return
+    const topic: MaterialityTopic = {
+      id: `topic_${Date.now()}`,
+      name: newTopic.name,
+      category: newTopic.category,
+      stakeholderImpact: Number(newTopic.stakeholderImpact),
+      businessImpact: Number(newTopic.businessImpact),
+      description: newTopic.description,
+    }
+    const updated = [...materialityTopics, topic]
+    setMaterialityTopics(updated)
+    localStorage.setItem('ecosphere_materiality_topics', JSON.stringify(updated))
+    setNewTopic({ name: '', category: 'environmental', stakeholderImpact: 3, businessImpact: 3, description: '' })
+    setShowAddTopicModal(false)
+  }
+
+  const handleDeleteTopic = (id: string) => {
+    const updated = materialityTopics.filter(t => t.id !== id)
+    setMaterialityTopics(updated)
+    localStorage.setItem('ecosphere_materiality_topics', JSON.stringify(updated))
+    if (selectedTopic?.id === id) setSelectedTopic(null)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -249,6 +294,15 @@ export function GovernanceDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
+          {activeTab === 'materiality' && isManagerOrAdmin && (
+            <button
+              onClick={() => setShowAddTopicModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/95 transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Add Topic
+            </button>
+          )}
           {activeTab === 'policies' && isManagerOrAdmin && (
             <button
               onClick={() => setShowPolicyModal(true)}
@@ -286,6 +340,7 @@ export function GovernanceDashboard() {
           { id: 'policies', label: 'ESG Policies' },
           { id: 'audits', label: 'Audits Log' },
           { id: 'issues', label: 'Compliance Issues' },
+          { id: 'materiality', label: 'Materiality Matrix' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -879,6 +934,252 @@ export function GovernanceDashboard() {
           </div>
         </div>
       )}
+      {/* ── Materiality Matrix Tab ── */}
+      {activeTab === 'materiality' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Interactive Scatter Grid */}
+            <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col">
+              <div className="mb-4">
+                <h3 className="font-bold text-base">Double Materiality Matrix</h3>
+                <p className="text-xs text-muted-foreground">
+                  Identify and prioritize issues based on their importance to stakeholders and business success.
+                </p>
+              </div>
+
+              {/* Matrix Board */}
+              <div className="relative border-l-2 border-b-2 border-foreground/30 w-full h-[400px] mt-4 mb-8 bg-muted/10 rounded-tr-xl">
+                {/* Grid Gridlines */}
+                <div className="absolute inset-0 grid grid-cols-5 grid-rows-5 pointer-events-none opacity-20">
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div key={i} className="border border-foreground/20" />
+                  ))}
+                </div>
+
+                {/* Y-Axis Label */}
+                <div className="absolute -left-12 top-1/2 -rotate-90 origin-center text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Importance to Stakeholders
+                </div>
+
+                {/* X-Axis Label */}
+                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Significance of Business Impact
+                </div>
+
+                {/* Grid Zones */}
+                <div className="absolute right-2 top-2 bg-red-500/10 border border-red-500/20 text-red-700 text-[10px] font-bold uppercase px-2 py-0.5 rounded">
+                  Critical Priority
+                </div>
+                <div className="absolute left-2 bottom-2 bg-blue-500/10 border border-blue-500/20 text-blue-700 text-[10px] font-bold uppercase px-2 py-0.5 rounded">
+                  Low Priority
+                </div>
+
+                {/* Topics Dots */}
+                {materialityTopics.map((t) => {
+                  const bottomPct = ((t.stakeholderImpact - 1) / 4) * 80 + 10 // scale 1-5 to 10%-90%
+                  const leftPct = ((t.businessImpact - 1) / 4) * 80 + 10
+                  const isSelected = selectedTopic?.id === t.id
+                  const categoryColors = {
+                    environmental: 'bg-emerald-500 border-emerald-600 shadow-emerald-500/30',
+                    social: 'bg-blue-500 border-blue-600 shadow-blue-500/30',
+                    governance: 'bg-amber-500 border-amber-600 shadow-amber-500/30',
+                  }
+
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setSelectedTopic(t)}
+                      style={{ bottom: `${bottomPct}%`, left: `${leftPct}%` }}
+                      className={`absolute w-6 h-6 rounded-full border-2 shadow-lg -translate-x-1/2 translate-y-1/2 flex items-center justify-center text-[10px] text-white font-extrabold transition-all duration-300 transform hover:scale-125 ${
+                        isSelected ? 'scale-125 ring-4 ring-primary/30 z-10' : 'z-0'
+                      } ${categoryColors[t.category]}`}
+                      title={t.name}
+                    >
+                      {t.category[0].toUpperCase()}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Legend & Categories */}
+              <div className="flex gap-4 text-xs font-semibold mt-auto justify-center border-t border-border pt-4">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500" /> Environmental</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500" /> Social</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500" /> Governance</span>
+              </div>
+            </div>
+
+            {/* Sidebar info */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+              {selectedTopic ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-border pb-3">
+                    <h4 className="font-bold text-lg">{selectedTopic.name}</h4>
+                    <button
+                      onClick={() => handleDeleteTopic(selectedTopic.id)}
+                      className="text-muted-foreground hover:text-red-500 text-xs flex items-center gap-1 border border-border rounded px-2 py-1 transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Delete
+                    </button>
+                  </div>
+
+                  <div>
+                    <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Pillar</span>
+                    <p className={`text-sm font-semibold capitalize mt-1 ${
+                      selectedTopic.category === 'environmental' ? 'text-emerald-600' :
+                      selectedTopic.category === 'social' ? 'text-blue-600' :
+                      'text-amber-600'
+                    }`}>{selectedTopic.category}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Stakeholder Impact</span>
+                      <p className="text-2xl font-extrabold text-foreground mt-1">{selectedTopic.stakeholderImpact} <span className="text-sm text-muted-foreground font-normal">/ 5</span></p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Business Impact</span>
+                      <p className="text-2xl font-extrabold text-foreground mt-1">{selectedTopic.businessImpact} <span className="text-sm text-muted-foreground font-normal">/ 5</span></p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Assessment Note</span>
+                    <p className="text-sm text-muted-foreground leading-relaxed mt-1">{selectedTopic.description || 'No detailed assessment provided for this topic yet.'}</p>
+                  </div>
+
+                  <div className="bg-muted/30 border border-border p-4 rounded-xl">
+                    <h5 className="text-xs font-bold uppercase tracking-wider mb-2">Priority Tier</h5>
+                    {selectedTopic.businessImpact * selectedTopic.stakeholderImpact >= 16 ? (
+                      <div className="flex items-center gap-2 text-red-700 font-bold text-sm">
+                        <AlertCircle className="w-4 h-4 text-red-500" /> Critical Focus Area
+                      </div>
+                    ) : selectedTopic.businessImpact * selectedTopic.stakeholderImpact >= 9 ? (
+                      <div className="flex items-center gap-2 text-amber-700 font-bold text-sm">
+                        <Info className="w-4 h-4 text-amber-500" /> Material Target
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-blue-700 font-bold text-sm">
+                        <CheckCircle2 className="w-4 h-4 text-blue-500" /> Monitor / Informational
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground py-12">
+                  <BookOpen className="w-12 h-12 text-muted-foreground/30 mb-3" />
+                  <p className="font-semibold text-sm">No Topic Selected</p>
+                  <p className="text-xs mt-1 max-w-[200px]">Click any circular dot on the matrix grid to inspect assessment details and priority ratings.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Materiality Topic Modal */}
+      {showAddTopicModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <h3 className="font-bold text-lg">Add Materiality Matrix Topic</h3>
+              <button onClick={() => setShowAddTopicModal(false)} className="text-muted-foreground hover:text-foreground">
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleAddTopic} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold mb-1">Topic Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newTopic.name}
+                  onChange={e => setNewTopic(p => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g. Waste & Circular Economy"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">ESG Pillar</label>
+                <select
+                  value={newTopic.category}
+                  onChange={e => setNewTopic(p => ({ ...p, category: e.target.value as any }))}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="environmental">Environmental</option>
+                  <option value="social">Social</option>
+                  <option value="governance">Governance</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Stakeholder Impact (1-5)</label>
+                  <input
+                    type="number" min={1} max={5}
+                    value={newTopic.stakeholderImpact}
+                    onChange={e => setNewTopic(p => ({ ...p, stakeholderImpact: Number(e.target.value) }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Business Impact (1-5)</label>
+                  <input
+                    type="number" min={1} max={5}
+                    value={newTopic.businessImpact}
+                    onChange={e => setNewTopic(p => ({ ...p, businessImpact: Number(e.target.value) }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Description / Notes</label>
+                <textarea
+                  value={newTopic.description}
+                  onChange={e => setNewTopic(p => ({ ...p, description: e.target.value }))}
+                  placeholder="Justification for the priority level..."
+                  rows={3}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowAddTopicModal(false)} className="px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted/50">
+                  Cancel
+                </button>
+                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/95">
+                  Add Topic
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+// ── Materiality matrix support types & seed ────────────────────────────────
+interface MaterialityTopic {
+  id: string
+  name: string
+  category: 'environmental' | 'social' | 'governance'
+  stakeholderImpact: number // 1 to 5
+  businessImpact: number // 1 to 5
+  description: string
+}
+
+function getDefaultMaterialityTopics(): MaterialityTopic[] {
+  return [
+    { id: 'mt_1', name: 'GHG Emissions & Climate Change', category: 'environmental', stakeholderImpact: 5, businessImpact: 5, description: 'Direct priority given the EU CBAM regulations and national emission compliance guidelines.' },
+    { id: 'mt_2', name: 'Workforce Diversity & inclusion', category: 'social', stakeholderImpact: 4, businessImpact: 3, description: 'Critical for company reputation and social license to operate.' },
+    { id: 'mt_3', name: 'Cybersecurity & Data Privacy', category: 'governance', stakeholderImpact: 5, businessImpact: 4, description: 'Essential protection required to secure corporate IP and prevent regulatory penalties.' },
+    { id: 'mt_4', name: 'Circular Economy & Resource Waste', category: 'environmental', stakeholderImpact: 3, businessImpact: 4, description: 'High business impact to optimize production costs and reduce material wastage.' },
+    { id: 'mt_5', name: 'Business Ethics & Anti-Corruption', category: 'governance', stakeholderImpact: 5, businessImpact: 5, description: 'Zero tolerance policy is vital to operate as a listed entity without risk.' },
+    { id: 'mt_6', name: 'Community Relations & CSR', category: 'social', stakeholderImpact: 3, businessImpact: 2, description: 'Ongoing local initiatives with moderate business impact but key social value.' }
+  ]
+}
+
