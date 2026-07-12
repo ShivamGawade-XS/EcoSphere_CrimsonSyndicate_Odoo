@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { dbService } from '@/lib/dbService'
+import { CarbonTransactionsList } from '../CarbonTransactionsList'
 import {
   EmissionFactor,
   CarbonTransaction,
@@ -604,95 +605,14 @@ export function EnvironmentalDashboard() {
       )}
 
       {activeTab === 'transactions' && (
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-muted/50 border-b border-border">
-                <tr>
-                  <th className="py-4 px-6 font-semibold">Date</th>
-                  <th className="py-4 px-6 font-semibold">Department</th>
-                  <th className="py-4 px-6 font-semibold">Source Type</th>
-                  <th className="py-4 px-6 font-semibold">Quantity</th>
-                  <th className="py-4 px-6 font-semibold">Emissions (kg CO₂e)</th>
-                  <th className="py-4 px-6 font-semibold">Method</th>
-                  <th className="py-4 px-6 font-semibold">Notes</th>
-                  <th className="py-4 px-6 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedTxs.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-muted-foreground">
-                      No carbon transactions recorded yet.
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedTxs.map((tx) => (
-                    <tr key={tx.id} className="border-b border-border hover:bg-muted/20 transition-colors">
-                      <td className="py-4 px-6 whitespace-nowrap">{formatDate(tx.date)}</td>
-                      <td className="py-4 px-6 font-medium">{tx.department?.name || 'Unknown'}</td>
-                      <td className="py-4 px-6">
-                        <span className="capitalize px-2.5 py-1 bg-secondary text-secondary-foreground rounded-full text-xs font-medium">
-                          {tx.source_type}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        {tx.quantity.toLocaleString()} {tx.emission_factor?.unit.split('/').pop()}
-                      </td>
-                      <td className="py-4 px-6 font-bold text-emerald-600">
-                        {formatCO2(tx.calculated_emission_kg)}
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          tx.auto_calculated ? 'bg-indigo-50 text-indigo-600' : 'bg-orange-50 text-orange-600'
-                        }`}>
-                          {tx.auto_calculated ? 'Auto' : 'Manual'}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 text-muted-foreground truncate max-w-xs">{tx.notes || '-'}</td>
-                      <td className="py-4 px-6 text-right space-x-2 whitespace-nowrap">
-                        <button
-                          onClick={() => startEditTx(tx)}
-                          className="px-2 py-1 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold rounded transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteTx(tx.id)}
-                          className="px-2 py-1 bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-semibold rounded transition-colors"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          {txTotalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/20">
-              <span className="text-xs text-muted-foreground">
-                Page {txPage} of {txTotalPages}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setTxPage(prev => Math.max(1, prev - 1))}
-                  disabled={txPage === 1}
-                  className="px-3 py-1 bg-background border border-border text-xs rounded hover:bg-muted disabled:opacity-50 transition-colors"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => setTxPage(prev => Math.min(txTotalPages, prev + 1))}
-                  disabled={txPage === txTotalPages}
-                  className="px-3 py-1 bg-background border border-border text-xs rounded hover:bg-muted disabled:opacity-50 transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <CarbonTransactionsList
+            orgId={org.id}
+            depts={depts}
+            startEditTx={startEditTx}
+            handleDeleteTx={handleDeleteTx}
+            refreshTrigger={refreshKey}
+          />
         </div>
       )}
 

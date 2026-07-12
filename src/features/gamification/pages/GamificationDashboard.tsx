@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { dbService } from '@/lib/dbService'
+import { DataTablePaginated } from '@/components/shared/DataTablePaginated'
 import {
   Challenge,
   ChallengeParticipation,
@@ -31,6 +33,7 @@ import {
 export function GamificationDashboard() {
   const [activeTab, setActiveTab] = useState<'wallet' | 'challenges' | 'rewards' | 'leaderboards'>('wallet')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Load Data
   const currentUser = useMemo(() => dbService.getCurrentUser(), [refreshKey])
@@ -51,15 +54,40 @@ export function GamificationDashboard() {
   const [proofNotes, setProofNotes] = useState('')
   const [selectedLeaderboard, setSelectedLeaderboard] = useState<'individual' | 'challenges' | 'department'>('individual')
 
+  // Sorting state for leaderboard
+  const [leaderboardSort, setLeaderboardSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
+    column: 'total_xp',
+    direction: 'desc',
+  })
+
   const isManagerOrAdmin = currentUser.role === 'admin' || currentUser.role === 'esg_manager'
 
   // Leaderboards computation
+  const sortedIndividualProfiles = useMemo(() => {
+    const list = [...profiles]
+    const { column, direction } = leaderboardSort
+    list.sort((a: any, b: any) => {
+      const valA = a[column]
+      const valB = b[column]
+
+      if (valA === undefined || valB === undefined) return 0
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA)
+      }
+
+      return direction === 'asc' ? Number(valA) - Number(valB) : Number(valB) - Number(valA)
+    })
+    return list.map((p, idx) => ({ ...p, rank: idx + 1 }))
+  }, [profiles, leaderboardSort])
+
+  const page = Number(searchParams.get('page') || '1')
+  const pageSize = Number(localStorage.getItem('ecosphere-global-page-size') || '25')
+
   const individualLeaderboard = useMemo(() => {
-    return [...profiles]
-      .sort((a, b) => b.total_xp - a.total_xp)
-      .slice(0, 20)
-      .map((p, idx) => ({ ...p, rank: idx + 1 }))
-  }, [profiles])
+    const start = (page - 1) * pageSize
+    return sortedIndividualProfiles.slice(start, start + pageSize)
+  }, [sortedIndividualProfiles, page, pageSize])
 
   const challengesLeaderboard = useMemo(() => {
     return [...profiles].map(p => {
@@ -461,22 +489,29 @@ export function GamificationDashboard() {
           {/* Table List */}
           <div className="p-4">
             {selectedLeaderboard === 'individual' && (
-              <div className="space-y-2">
-                {individualLeaderboard.map((u) => (
-                  <div key={u.id} className={`flex items-center justify-between p-3 rounded-xl border ${
-                    u.id === currentUser.id ? 'border-primary bg-primary/5 font-semibold' : 'border-border bg-card'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-muted-foreground w-6">#{u.rank}</span>
-                      <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-xs font-bold text-emerald-600 uppercase">
-                        {u.full_name.charAt(0)}
+              <DataTablePaginated
+                columns={[
+                  { key: 'rank', header: 'Rank', sortable: false, render: (u) => <span className="font-bold text-muted-foreground">#{u.rank}</span> },
+                  {
+                    key: 'full_name',
+                    header: 'Employee',
+                    sortable: true,
+                    render: (u) => (
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-xs font-bold text-emerald-600 uppercase">
+                          {u.full_name.charAt(0)}
+                        </div>
+                        <span className={u.id === currentUser.id ? 'font-bold text-primary' : ''}>{u.full_name}</span>
                       </div>
-                      <span className="text-sm">{u.full_name}</span>
-                    </div>
-                    <span className="text-xs font-bold text-emerald-600">{u.total_xp.toLocaleString()} XP</span>
-                  </div>
-                ))}
-              </div>
+                    )
+                  },
+                  { key: 'total_xp', header: 'Total Experience', sortable: true, render: (u) => <span className="font-bold text-emerald-500">{u.total_xp.toLocaleString()} XP</span> }
+                ]}
+                data={individualLeaderboard}
+                totalCount={profiles.length}
+                currentSort={leaderboardSort}
+                onSortChange={(col, dir) => setLeaderboardSort({ column: col, direction: dir })}
+              />
             )}
 
             {selectedLeaderboard === 'challenges' && (

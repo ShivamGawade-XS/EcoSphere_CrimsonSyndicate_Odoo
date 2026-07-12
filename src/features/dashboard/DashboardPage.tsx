@@ -23,16 +23,16 @@ const quickActions = [
 
 // ─── StatCard component ───────────────────────────────────────────────────────
 function StatCard({
-  label, value, delta, icon: Icon, color, bg, subtitle
+  label, value, delta, icon: Icon, color, bg, subtitle, className = ''
 }: {
   label: string; value: string | number; delta?: number;
-  icon: React.ElementType; color: string; bg: string; subtitle?: string
+  icon: React.ElementType; color: string; bg: string; subtitle?: string; className?: string
 }) {
   const DeltaIcon = delta === undefined ? Minus : delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus
   const deltaColor = delta === undefined ? 'text-muted-foreground' : delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-red-400' : 'text-muted-foreground'
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-3 hover:border-white/20 transition-colors group">
+    <div className={`bg-card border border-border rounded-xl p-5 flex flex-col gap-3 hover:border-white/20 transition-all group ${className}`}>
       <div className="flex items-start justify-between">
         <div className={`p-2.5 rounded-lg ${bg}`}>
           <Icon className={`w-5 h-5 ${color}`} />
@@ -66,6 +66,17 @@ export function DashboardPage() {
   const challenges = useMemo(() => dbService.getChallenges(), [refreshKey])
   const txs = useMemo(() => dbService.getCarbonTransactions(), [refreshKey])
   const [refreshing, setRefreshing] = useState(false)
+  const [envPulsing, setEnvPulsing] = useState(false)
+
+  useEffect(() => {
+    const handleNewEmission = () => {
+      setEnvPulsing(true)
+      const timer = setTimeout(() => setEnvPulsing(false), 2000)
+      return () => clearTimeout(timer)
+    }
+    window.addEventListener('ecosphere-new-emission', handleNewEmission)
+    return () => window.removeEventListener('ecosphere-new-emission', handleNewEmission)
+  }, [])
 
   const openIssues = useMemo(() => issues.filter((i: any) => i.status !== 'resolved').length, [issues])
   const criticalIssues = useMemo(() => issues.filter((i: any) => i.severity === 'critical' && i.status !== 'resolved').length, [issues])
@@ -162,7 +173,9 @@ export function DashboardPage() {
             <ScoreBadge score={scores?.composite ?? 0} label="Composite ESG Score" size="lg" />
           )}
           <div className="flex gap-2 flex-wrap justify-center">
-            <ScorePill score={scores?.env ?? 0} label="E" />
+            <div className={envPulsing ? 'animate-pulse scale-105 shadow-[0_0_15px_rgba(16,185,129,0.5)] rounded-full transition-all duration-300' : ''}>
+              <ScorePill score={scores?.env ?? 0} label="E" />
+            </div>
             <ScorePill score={scores?.social ?? 0} label="S" />
             <ScorePill score={scores?.gov ?? 0} label="G" />
           </div>
@@ -173,7 +186,16 @@ export function DashboardPage() {
 
         {/* Stat cards */}
         <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <StatCard label="CO₂ Emissions" value={formatEmission(totalEmissions)} icon={Leaf} color="text-emerald-400" bg="bg-emerald-500/10" delta={-3.2} subtitle="vs last month" />
+          <StatCard
+            label="CO₂ Emissions"
+            value={formatEmission(totalEmissions)}
+            icon={Leaf}
+            color="text-emerald-400"
+            bg="bg-emerald-500/10"
+            delta={-3.2}
+            subtitle="vs last month"
+            className={envPulsing ? 'ring-2 ring-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)] bg-emerald-500/5' : ''}
+          />
           <StatCard label="Open Issues" value={openIssues} icon={AlertTriangle} color="text-orange-400" bg="bg-orange-500/10" delta={openIssues > 0 ? 5.1 : -10} subtitle={`${criticalIssues} critical`} />
           <StatCard label="Active Goals" value={activeGoals} icon={Target} color="text-blue-400" bg="bg-blue-500/10" subtitle="sustainability targets" />
           <StatCard label="CSR Activities" value={activeCSR} icon={Users} color="text-purple-400" bg="bg-purple-500/10" delta={2.0} subtitle="open for joining" />

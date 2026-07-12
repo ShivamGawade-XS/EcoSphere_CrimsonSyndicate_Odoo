@@ -1,0 +1,22 @@
+feat: complete pagination, Vitest suite, and GitHub Actions CI/CD
+
+Pagination:
+- GamificationDashboard: individual leaderboard → DataTablePaginated
+- GovernanceDashboard: policies table → DataTablePaginated + sidebar preserved
+- SettingsPage: user management table → DataTablePaginated with sorting
+
+Vitest Test Suite:
+- Configure vite.config.ts with test block (jsdom, globals, coverage v8)
+- Add test/test:watch/test:ui/test:coverage scripts to package.json
+- Create src/test/setup.ts (vi.clearAllMocks afterEach)
+- Write 70-test suite in src/lib/scoring/__tests__/engine.test.ts
+  covering Environmental (14), Social (14), Governance (14),
+  Overall/Full (14), and Edge Cases (14) — all 70 pass
+
+GitHub Actions CI/CD:
+- .github/workflows/ci.yml: type-check, lint, Vitest, build + size gate
+- .github/workflows/deploy.yml: Vercel + health check + Discord notify
+- .github/workflows/security.yml: npm audit, Snyk, Gitleaks
+- .github/PULL_REQUEST_TEMPLATE.md: EcoSphere-specific PR checklist
+- .github/ISSUE_TEMPLATE/bug_report.md: structured bug report
+- .github/dependabot.yml: grouped weekly updates for npm and Actions

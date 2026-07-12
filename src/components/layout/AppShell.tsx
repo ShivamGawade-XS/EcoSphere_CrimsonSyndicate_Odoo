@@ -14,10 +14,13 @@ import {
   Building2,
   ChevronDown,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { dbService } from '@/lib/dbService'
 import { NotificationBell } from '@/components/shared/NotificationBell'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
+import { useOrgRealtimeSync } from '@/hooks/useOrgRealtimeSync'
+import { LiveIndicator } from '@/components/shared/LiveIndicator'
+import { useToast } from '@/contexts/ToastContext'
 
 const navItems = [
   { to: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard' },
@@ -50,6 +53,40 @@ export function AppShell() {
 
   const currentUser = dbService.getCurrentUser()
   const org         = dbService.getOrganization()
+
+  const { toast } = useToast()
+  const [realtimeEnabled, setRealtimeEnabled] = useState(() => {
+    const saved = localStorage.getItem('ecosphere-realtime-sync')
+    return saved === null ? true : saved === 'true'
+  })
+
+  // Synchronise realtime sync settings across tabs/components
+  useEffect(() => {
+    const syncRealtime = () => {
+      const saved = localStorage.getItem('ecosphere-realtime-sync')
+      setRealtimeEnabled(saved === null ? true : saved === 'true')
+    }
+    window.addEventListener('storage', syncRealtime)
+    window.addEventListener('ecosphere-settings-realtime-toggle', syncRealtime)
+    return () => {
+      window.removeEventListener('storage', syncRealtime)
+      window.removeEventListener('ecosphere-settings-realtime-toggle', syncRealtime)
+    }
+  }, [])
+
+  const { status: realtimeStatus } = useOrgRealtimeSync({
+    orgId: org?.id ?? null,
+    enabled: realtimeEnabled,
+    onNewEmission: (tx) => {
+      toast(
+        'info',
+        'New Emission Recorded',
+        `New emission recorded by ${tx.department?.name || 'Company-Wide'} — ${(tx.calculated_emission_kg / 1000).toFixed(2)} tCO2e`
+      )
+      // Custom event for animating/pulsing Environmental Score card on the dashboard
+      window.dispatchEvent(new CustomEvent('ecosphere-new-emission', { detail: tx }))
+    },
+  })
 
   const userInitials = currentUser.full_name
     ? currentUser.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
@@ -216,6 +253,7 @@ export function AppShell() {
 
           {/* Right: theme + notifications + user avatar */}
           <div className="flex items-center gap-1.5">
+            <LiveIndicator status={realtimeStatus} className="mr-2" />
             <ThemeToggle compact />
             <div className="w-px h-5 bg-border mx-0.5" />
             <NotificationBell />

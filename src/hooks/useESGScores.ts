@@ -1,19 +1,127 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { dbService } from '@/lib/dbService'
 import type { DepartmentScore, Notification } from '@/types'
+import { calculateFullScore, type ScoringInput } from '@/lib/scoring/engine'
 
 export interface ESGScoreSummary {
-  env: number
-  social: number
-  gov: number
+  env:       number
+  social:    number
+  gov:       number
   composite: number
-  trend: 'up' | 'down' | 'flat'
+  trend:     'up' | 'down' | 'flat'
   lastUpdated: string
 }
 
+/** Build a ScoringInput from the local dbService data layer */
+function buildScoringInput(
+  org: ReturnType<typeof dbService.getOrganization>
+): ScoringInput {
+  const goals             = dbService.getGoals()
+  const transactions      = dbService.getCarbonTransactions()
+  const csrActivities     = dbService.getCSRActivities()
+  const csrParticipations = dbService.getCSRParticipations()
+  const profiles          = dbService.getProfiles()
+  const policies          = dbService.getPolicies?.() ?? []
+  const audits            = dbService.getAudits?.()   ?? []
+  const issues            = dbService.getComplianceIssues()
+
+  // Build goals array from environmental goals
+  const scoringGoals = goals.map(g => ({
+    target:   typeof g.target_value === 'number' ? g.target_value : 100,
+    actual:   typeof g.current_value === 'number' ? g.current_value : 0,
+    deadline: new Date(g.deadline ?? new Date()),
+  }))
+
+  // Build emissions from carbon transactions
+  const scoringEmissions = transactions.map(tx => ({
+    amount: tx.calculated_emission_kg ?? 0,
+    month:  new Date(tx.date ?? new Date()),
+    scope:  (tx.scope ?? 1) as 1 | 2 | 3,
+  }))
+
+  // CSR activities: use participations to calculate rates per activity
+  const activityMap = new Map<string, { participants: number; totalEligible: number; approved: boolean }>()
+  for (const p of csrParticipations) {
+    const existing = activityMap.get(p.activity_id ?? '')
+    if (existing) {
+      existing.participants++
+      if (p.approval_status === 'approved') existing.approved = true
+    } else {
+      activityMap.set(p.activity_id ?? '', {
+        participants: 1,
+        totalEligible: profiles.length || 1,
+        approved: p.approval_status === 'approved',
+      })
+    }
+  }
+  // Fall back to counting active CSR activities if no participations
+  if (activityMap.size === 0) {
+    for (const a of csrActivities) {
+      activityMap.set(a.id, {
+        participants: Math.round(profiles.length * 0.6),
+        totalEligible: profiles.length || 1,
+        approved: a.status === 'active',
+      })
+    }
+  }
+  const scoringCSR = Array.from(activityMap.values())
+
+  // Training records: use XP-based mock (employees with points > 100 count as trained)
+  const scoringTraining = profiles.map(p => ({
+    completed: (p.total_points ?? 0) > 100,
+    userId: p.id,
+  }))
+
+  // Diversity score: stored on org or defaulted to 65
+  const diversityScore = (org as any).diversity_score ?? 65
+
+  // Policies
+  const scoringPolicies = policies.length > 0
+    ? policies.map((p: any) => ({
+        acknowledged: p.acknowledgements?.length ?? Math.round((p.total ?? 10) * 0.8),
+        total:        p.total ?? p.employee_count ?? 10,
+        status:       (p.status ?? 'active') as 'active' | 'draft' | 'archived',
+      }))
+    : [{ acknowledged: 8, total: 10, status: 'active' as const }]
+
+  // Audits
+  const scoringAudits = audits.length > 0
+    ? audits.map((a: any) => ({
+        findings: a.findings_count ?? a.findings ?? 0,
+        critical: a.critical_count ?? a.critical ?? 0,
+        resolved: a.resolved_count ?? a.resolved ?? 0,
+      }))
+    : [{ findings: 2, critical: 0, resolved: 2 }]
+
+  // Compliance issues
+  const scoringIssues = issues.map(i => ({
+    severity: (i.severity ?? 'low') as 'low' | 'medium' | 'high' | 'critical',
+    resolved: i.status === 'resolved',
+  }))
+
+  return {
+    goals:            scoringGoals,
+    emissions:        scoringEmissions,
+    csrActivities:    scoringCSR,
+    trainingRecords:  scoringTraining,
+    diversityScore,
+    policies:         scoringPolicies,
+    audits:           scoringAudits,
+    complianceIssues: scoringIssues,
+    weights: {
+      environmental: org.env_weight    ?? 40,
+      social:        org.social_weight ?? 30,
+      governance:    org.gov_weight    ?? 30,
+    },
+  }
+}
+
 /**
- * Reads ESG scores from the local dbService and refreshes
- * whenever the component mounts or `refresh()` is called.
+ * Reads ESG scores via the pure scoring engine (src/lib/scoring/engine.ts)
+ * and refreshes whenever the component mounts or `refresh()` is called.
+ *
+ * This hook is the only place where React state and the scoring engine connect.
+ * The engine itself has no React dependency.
  */
 export function useESGScores() {
   const [scores, setScores] = useState<ESGScoreSummary | null>(null)
@@ -23,31 +131,27 @@ export function useESGScores() {
   const load = useCallback(() => {
     setLoading(true)
     try {
-      const org = dbService.getOrganization()
-      const all = dbService.getDepartmentScores()
+      const org  = dbService.getOrganization()
+      const all  = dbService.getDepartmentScores()
       setDeptScores(all)
 
-      if (all.length > 0) {
-        // Average across departments
-        const avgEnv = all.reduce((s, d) => s + d.env_score, 0) / all.length
-        const avgSocial = all.reduce((s, d) => s + d.social_score, 0) / all.length
-        const avgGov = all.reduce((s, d) => s + d.gov_score, 0) / all.length
-        const wEnv = org.env_weight / 100
-        const wSocial = org.social_weight / 100
-        const wGov = org.gov_weight / 100
-        const composite = avgEnv * wEnv + avgSocial * wSocial + avgGov * wGov
+      // Build input and run through the pure engine
+      const input     = buildScoringInput(org)
+      const breakdown = calculateFullScore(input)
 
-        setScores({
-          env: Math.round(avgEnv * 10) / 10,
-          social: Math.round(avgSocial * 10) / 10,
-          gov: Math.round(avgGov * 10) / 10,
-          composite: Math.round(composite * 10) / 10,
-          trend: composite >= 70 ? 'up' : composite >= 50 ? 'flat' : 'down',
-          lastUpdated: new Date().toISOString(),
-        })
-      } else {
-        setScores({ env: 0, social: 0, gov: 0, composite: 0, trend: 'flat', lastUpdated: new Date().toISOString() })
-      }
+      setScores({
+        env:         breakdown.environmental.score,
+        social:      breakdown.social.score,
+        gov:         breakdown.governance.score,
+        composite:   breakdown.overall,
+        trend:       breakdown.trend === 'improving' ? 'up'
+                   : breakdown.trend === 'declining' ? 'down'
+                   : 'flat',
+        lastUpdated: new Date().toISOString(),
+      })
+    } catch (err) {
+      console.warn('[useESGScores] Scoring engine error:', err)
+      setScores({ env: 0, social: 0, gov: 0, composite: 0, trend: 'flat', lastUpdated: new Date().toISOString() })
     } finally {
       setLoading(false)
     }

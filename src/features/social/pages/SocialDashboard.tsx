@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { dbService } from '@/lib/dbService'
+import { CSRActivityList } from '../CSRActivityList'
 import {
   CSRActivity,
   EmployeeParticipation,
@@ -583,55 +584,14 @@ export function SocialDashboard() {
 
       {activeTab === 'csr' && (
         <div className="space-y-6">
-          {/* CSR Activities Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {activities.map((act) => {
-              const joined = participations.some(p => p.activity_id === act.id && p.employee_id === currentUser.id)
-              const status = participations.find(p => p.activity_id === act.id && p.employee_id === currentUser.id)?.approval_status
-
-              return (
-                <div key={act.id} className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-1 rounded-full font-semibold">
-                        {categories.find(c => c.id === act.category_id)?.name || 'CSR Activity'}
-                      </span>
-                      <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5" />
-                        {formatDate(act.date)}
-                      </span>
-                    </div>
-
-                    <h4 className="font-bold text-lg text-foreground mt-3">{act.title}</h4>
-                    <p className="text-sm text-muted-foreground mt-1.5">{act.description}</p>
-                  </div>
-
-                  <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">
-                    <span className="text-sm font-bold text-teal-600 flex items-center gap-1">
-                      <Award className="w-4 h-4" />
-                      {act.points_reward} Points / XP
-                    </span>
-
-                    {joined ? (
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-bold uppercase ${
-                        status === 'approved' ? 'bg-green-50 text-green-700' :
-                        status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
-                      }`}>
-                        {status === 'approved' ? 'Approved' : status === 'rejected' ? 'Rejected' : 'Joined (Pending Approval)'}
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => handleJoinActivity(act.id)}
-                        className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold rounded-lg shadow-sm transition-all"
-                      >
-                        Join Activity
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          <CSRActivityList
+            orgId={org.id}
+            currentUser={currentUser}
+            categories={categories}
+            participations={participations}
+            handleJoinActivity={handleJoinActivity}
+            refreshTrigger={refreshKey}
+          />
 
           {/* Manage Pending Registrations Panel */}
           {isManagerOrAdmin && (

@@ -1,5 +1,9 @@
 import { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { dbService } from '@/lib/dbService'
+import { DataTablePaginated } from '@/components/shared/DataTablePaginated'
+import { AuditFindingsList } from '../AuditFindingsList'
+import { ComplianceIssuesList } from '../ComplianceIssuesList'
 import {
   ESGPolicy,
   Audit,
@@ -41,15 +45,49 @@ import {
 export function GovernanceDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'policies' | 'audits' | 'issues' | 'materiality'>('overview')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Load Data
   const currentUser = useMemo(() => dbService.getCurrentUser(), [refreshKey])
   const depts = useMemo(() => dbService.getDepartments(), [refreshKey])
   const profiles = useMemo(() => dbService.getProfiles(), [refreshKey])
-  const policies = useMemo(() => dbService.getPolicies(), [refreshKey])
+  const rawPolicies = useMemo(() => dbService.getPolicies(), [refreshKey])
   const acknowledgements = useMemo(() => dbService.getAcknowledgements(), [refreshKey])
   const audits = useMemo(() => dbService.getAudits(), [refreshKey])
   const rawIssues = useMemo(() => dbService.getComplianceIssues(), [refreshKey])
+
+  // Sorting state for policies
+  const [policySort, setPolicySort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
+    column: 'effective_date',
+    direction: 'desc',
+  })
+
+  // Sorted and paginated policies
+  const sortedPolicies = useMemo(() => {
+    const list = [...rawPolicies]
+    const { column, direction } = policySort
+    list.sort((a: any, b: any) => {
+      const valA = a[column]
+      const valB = b[column]
+
+      if (valA === undefined || valB === undefined) return 0
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA)
+      }
+
+      return direction === 'asc' ? Number(valA) - Number(valB) : Number(valB) - Number(valA)
+    })
+    return list
+  }, [rawPolicies, policySort])
+
+  const policyPage = Number(searchParams.get('page') || '1')
+  const policyPageSize = Number(localStorage.getItem('ecosphere-global-page-size') || '25')
+
+  const policies = useMemo(() => {
+    const start = (policyPage - 1) * policyPageSize
+    return sortedPolicies.slice(start, start + policyPageSize)
+  }, [sortedPolicies, policyPage, policyPageSize])
 
   // Materiality Matrix State
   const materialityTopics = useMemo(() => dbService.getMaterialityTopics(), [refreshKey])
@@ -469,51 +507,50 @@ export function GovernanceDashboard() {
       {activeTab === 'policies' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-muted/50 border-b border-border">
-                <tr>
-                  <th className="py-4 px-6 font-semibold">Title</th>
-                  <th className="py-4 px-6 font-semibold">Category</th>
-                  <th className="py-4 px-6 font-semibold">Version</th>
-                  <th className="py-4 px-6 font-semibold">Effective Date</th>
-                  <th className="py-4 px-6 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {policies.map((pol) => {
-                  const isAcked = acknowledgements.some(a => a.policy_id === pol.id && a.employee_id === currentUser.id)
-
-                  return (
-                    <tr
-                      key={pol.id}
+            <DataTablePaginated
+              columns={[
+                {
+                  key: 'title',
+                  header: 'Title',
+                  sortable: true,
+                  render: (pol) => (
+                    <span
+                      className={`font-medium cursor-pointer hover:text-primary transition-colors ${selectedPolicy?.id === pol.id ? 'text-primary' : ''}`}
                       onClick={() => setSelectedPolicy(pol)}
-                      className={`border-b border-border hover:bg-muted/10 transition-colors cursor-pointer ${
-                        selectedPolicy?.id === pol.id ? 'bg-muted/30' : ''
-                      }`}
                     >
-                      <td className="py-4 px-6 font-medium">{pol.title}</td>
-                      <td className="py-4 px-6 capitalize">{pol.category}</td>
-                      <td className="py-4 px-6 font-mono text-xs">{pol.version}</td>
-                      <td className="py-4 px-6">{formatDate(pol.effective_date)}</td>
-                      <td className="py-4 px-6 text-right space-x-2" onClick={e => e.stopPropagation()}>
-                        {isAcked ? (
-                          <span className="text-xs text-green-600 font-semibold flex items-center justify-end gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Acknowledged
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => handleAcknowledge(pol.id)}
-                            className="text-xs bg-primary/10 text-primary hover:bg-primary/20 px-2.5 py-1 rounded font-semibold transition-colors"
-                          >
-                            Sign Policy
-                          </button>
-                        )}
-                      </td>
-                    </tr>
+                      {pol.title}
+                    </span>
                   )
-                })}
-              </tbody>
-            </table>
+                },
+                { key: 'category', header: 'Category', sortable: true, render: (pol) => <span className="capitalize">{pol.category}</span> },
+                { key: 'version', header: 'Version', sortable: false, render: (pol) => <span className="font-mono text-xs">{pol.version}</span> },
+                { key: 'effective_date', header: 'Effective Date', sortable: true, render: (pol) => formatDate(pol.effective_date) },
+                {
+                  key: 'actions',
+                  header: 'Actions',
+                  sortable: false,
+                  render: (pol) => {
+                    const isAcked = acknowledgements.some(a => a.policy_id === pol.id && a.employee_id === currentUser.id)
+                    return isAcked ? (
+                      <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Acknowledged
+                      </span>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAcknowledge(pol.id) }}
+                        className="text-xs bg-primary/10 text-primary hover:bg-primary/20 px-2.5 py-1 rounded font-semibold transition-colors"
+                      >
+                        Sign Policy
+                      </button>
+                    )
+                  }
+                }
+              ]}
+              data={policies}
+              totalCount={rawPolicies.length}
+              currentSort={policySort}
+              onSortChange={(col, dir) => setPolicySort({ column: col, direction: dir })}
+            />
           </div>
 
           {/* Policy Detail Sidebar */}
@@ -583,128 +620,27 @@ export function GovernanceDashboard() {
         </div>
       )}
 
-      {activeTab === 'audits' && (
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 border-b border-border">
-              <tr>
-                <th className="py-4 px-6 font-semibold">Title</th>
-                <th className="py-4 px-6 font-semibold">Department</th>
-                <th className="py-4 px-6 font-semibold">Auditor</th>
-                <th className="py-4 px-6 font-semibold">Date</th>
-                <th className="py-4 px-6 font-semibold">Status</th>
-                <th className="py-4 px-6 font-semibold">Findings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {audits.map((a) => {
-                const dept = depts.find(d => d.id === a.department_id)
-                const auditor = profiles.find(p => p.id === a.auditor_id)
 
-                return (
-                  <tr key={a.id} className="border-b border-border hover:bg-muted/20 transition-colors">
-                    <td className="py-4 px-6 font-medium">{a.title}</td>
-                    <td className="py-4 px-6">{dept?.name}</td>
-                    <td className="py-4 px-6">{auditor?.full_name}</td>
-                    <td className="py-4 px-6">{formatDate(a.scheduled_date)}</td>
-                    <td className="py-4 px-6 capitalize">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        a.status === 'completed' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
-                      }`}>
-                        {a.status}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 text-xs text-muted-foreground">{a.findings || '-'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+      {activeTab === 'audits' && (
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <AuditFindingsList
+            orgId={org.id}
+            depts={depts}
+            profiles={profiles}
+            refreshTrigger={refreshKey}
+          />
         </div>
       )}
 
       {activeTab === 'issues' && (
-        <div>
-          {/* Search + Filter bar */}
-          <div className="flex flex-wrap gap-3 mb-6">
-            <input
-              type="search"
-              placeholder="Search issues…"
-              value={issueSearch}
-              onChange={e => setIssueSearch(e.target.value)}
-              className="flex-1 min-w-[180px] bg-background border border-border rounded-lg px-3 py-2 text-sm"
-            />
-            <select
-              value={issueSeverityFilter}
-              onChange={e => setIssueSeverityFilter(e.target.value as typeof issueSeverityFilter)}
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="all">All Severities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredIssues.map((i) => {
-            const isOverdue = i.status === 'overdue'
-
-            return (
-              <div
-                key={i.id}
-                className={`bg-card border rounded-2xl p-5 shadow-sm flex flex-col justify-between transition-all ${
-                  isOverdue ? 'border-red-300 bg-red-500/5' : 'border-border'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase ${getSeverityColor(i.severity)}`}>
-                      {i.severity}
-                    </span>
-                    <span className={`text-[10px] font-bold uppercase ${
-                      i.status === 'resolved' ? 'text-green-600' : isOverdue ? 'text-red-500 animate-pulse' : 'text-amber-500'
-                    }`}>
-                      {i.status}
-                    </span>
-                  </div>
-
-                  <h4 className="font-bold text-base mt-3 text-foreground">{i.title}</h4>
-                  <p className="text-xs text-muted-foreground mt-1">{i.description}</p>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-border/80 flex items-center justify-between text-xs text-muted-foreground">
-                  <div>
-                    <p className="font-medium text-foreground">Owner: {i.owner?.full_name}</p>
-                    <p className="text-[10px] mt-0.5">Due: {formatDate(i.due_date)}</p>
-                  </div>
-
-                  {i.status !== 'resolved' && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setResolveIssueItem(i)}
-                        className="text-xs text-primary hover:underline font-bold"
-                      >
-                        Mark Resolved
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm('Delete this compliance issue?')) {
-                            dbService.deleteComplianceIssue(i.id)
-                            setRefreshKey(prev => prev + 1)
-                          }
-                        }}
-                        className="text-xs text-red-500 hover:underline font-bold ml-2"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-          </div>
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <ComplianceIssuesList
+            orgId={org.id}
+            setResolveIssueItem={setResolveIssueItem}
+            onRefresh={() => setRefreshKey(prev => prev + 1)}
+            getSeverityColor={getSeverityColor}
+            refreshTrigger={refreshKey}
+          />
         </div>
       )}
 

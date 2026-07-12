@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { dbService, initializeLocalDatabase } from '@/lib/dbService'
 import { useToast } from '@/contexts/ToastContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
+import { DataTablePaginated } from '@/components/shared/DataTablePaginated'
 import {
   Organization,
   Department,
@@ -36,13 +38,47 @@ import {
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'org' | 'toggles' | 'depts' | 'users' | 'redemptions' | 'billing' | 'integrations' | 'audit'>('org')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Load Data
   const org = useMemo(() => dbService.getOrganization(), [refreshKey])
   const depts = useMemo(() => dbService.getDepartments(), [refreshKey])
-  const users = useMemo(() => dbService.getProfiles(), [refreshKey])
+  const rawUsers = useMemo(() => dbService.getProfiles(), [refreshKey])
   const redemptions = useMemo(() => dbService.getRedemptions(), [refreshKey])
   const currentUser = useMemo(() => dbService.getCurrentUser(), [refreshKey])
+
+  // Sorting state for user management
+  const [userSort, setUserSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
+    column: 'full_name',
+    direction: 'asc',
+  })
+
+  // Sorted and Paginated users
+  const sortedUsers = useMemo(() => {
+    const list = [...rawUsers]
+    const { column, direction } = userSort
+    list.sort((a: any, b: any) => {
+      const valA = a[column]
+      const valB = b[column]
+
+      if (valA === undefined || valB === undefined) return 0
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA)
+      }
+
+      return direction === 'asc' ? Number(valA) - Number(valB) : Number(valB) - Number(valA)
+    })
+    return list
+  }, [rawUsers, userSort])
+
+  const userPage = Number(searchParams.get('page') || '1')
+  const userPageSize = Number(localStorage.getItem('ecosphere-global-page-size') || '25')
+
+  const users = useMemo(() => {
+    const start = (userPage - 1) * userPageSize
+    return sortedUsers.slice(start, start + userPageSize)
+  }, [sortedUsers, userPage, userPageSize])
 
   // SaaS Enterprise Data
   const sso = useMemo(() => dbService.getSSOConfig(), [refreshKey])
@@ -88,6 +124,18 @@ export function SettingsPage() {
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null)
   const { theme, setTheme } = useTheme()
   const { success, error: toastError } = useToast()
+
+  const [realtimeSync, setRealtimeSync] = useState(() => {
+    const saved = localStorage.getItem('ecosphere-realtime-sync')
+    return saved === null ? true : saved === 'true'
+  })
+
+  const handleToggleRealtime = () => {
+    const newValue = !realtimeSync
+    setRealtimeSync(newValue)
+    localStorage.setItem('ecosphere-realtime-sync', String(newValue))
+    window.dispatchEvent(new Event('ecosphere-settings-realtime-toggle'))
+  }
 
   // Sync orgProfile from org on mount/refresh
   const syncedOrgProfile = useMemo(() => ({
@@ -490,6 +538,24 @@ export function SettingsPage() {
                 </button>
               </div>
             ))}
+            {/* Real-time Sync Toggle */}
+            <div className="flex items-start justify-between p-4 bg-muted/30 rounded-xl border border-border/80">
+              <div className="pr-4">
+                <h4 className="text-xs font-bold text-foreground">Real-Time Data Sync</h4>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Subscribe to Supabase Realtime changes for live dashboard updates.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleRealtime}
+                className="text-primary hover:opacity-90 flex-shrink-0 transition-all"
+              >
+                {realtimeSync ? (
+                  <ToggleRight className="w-10 h-10 text-primary" />
+                ) : (
+                  <ToggleLeft className="w-10 h-10 text-muted-foreground" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -537,53 +603,62 @@ export function SettingsPage() {
       )}
 
       {activeTab === 'users' && (
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 border-b border-border">
-              <tr>
-                <th className="py-4 px-6 font-semibold">User</th>
-                <th className="py-4 px-6 font-semibold">Email</th>
-                <th className="py-4 px-6 font-semibold">Role</th>
-                <th className="py-4 px-6 font-semibold">Department Assignment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id} className="border-b border-border hover:bg-muted/20 transition-colors">
-                  <td className="py-4 px-6 font-medium flex items-center gap-2">
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <DataTablePaginated
+            columns={[
+              {
+                key: 'full_name',
+                header: 'User',
+                sortable: true,
+                render: (u) => (
+                  <div className="flex items-center gap-2 font-medium">
                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
                       {u.full_name.charAt(0)}
                     </div>
                     {u.full_name}
-                  </td>
-                  <td className="py-4 px-6 font-mono text-xs text-muted-foreground">{u.email}</td>
-                  <td className="py-4 px-6">
-                    <select
-                      value={u.role}
-                      onChange={(e) => handleUserRoleChange(u.id, e.target.value as UserRole)}
-                      className="bg-background border border-border rounded px-2.5 py-1 text-xs"
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="executive">Executive</option>
-                      <option value="esg_manager">ESG Manager</option>
-                      <option value="dept_head">Dept Head</option>
-                      <option value="employee">Employee</option>
-                    </select>
-                  </td>
-                  <td className="py-4 px-6">
-                    <select
-                      value={u.department_id || ''}
-                      onChange={(e) => handleUserDeptChange(u.id, e.target.value)}
-                      className="bg-background border border-border rounded px-2.5 py-1 text-xs"
-                    >
-                      <option value="">Unassigned</option>
-                      {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                )
+              },
+              { key: 'email', header: 'Email', sortable: true, render: (u) => <span className="font-mono text-xs text-muted-foreground">{u.email}</span> },
+              {
+                key: 'role',
+                header: 'Role',
+                sortable: true,
+                render: (u) => (
+                  <select
+                    value={u.role}
+                    onChange={(e) => handleUserRoleChange(u.id, e.target.value as UserRole)}
+                    className="bg-background border border-border rounded px-2.5 py-1 text-xs"
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="executive">Executive</option>
+                    <option value="esg_manager">ESG Manager</option>
+                    <option value="dept_head">Dept Head</option>
+                    <option value="employee">Employee</option>
+                  </select>
+                )
+              },
+              {
+                key: 'department_id',
+                header: 'Department Assignment',
+                sortable: true,
+                render: (u) => (
+                  <select
+                    value={u.department_id || ''}
+                    onChange={(e) => handleUserDeptChange(u.id, e.target.value)}
+                    className="bg-background border border-border rounded px-2.5 py-1 text-xs"
+                  >
+                    <option value="">Unassigned</option>
+                    {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                )
+              }
+            ]}
+            data={users}
+            totalCount={rawUsers.length}
+            currentSort={userSort}
+            onSortChange={(col, dir) => setUserSort({ column: col, direction: dir })}
+          />
         </div>
       )}
 
