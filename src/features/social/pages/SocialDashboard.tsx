@@ -46,6 +46,7 @@ export function SocialDashboard() {
 
   // Load Data
   const currentUser = useMemo(() => dbService.getCurrentUser(), [refreshKey])
+  const org = useMemo(() => dbService.getOrganization(), [refreshKey])
   const depts = useMemo(() => dbService.getDepartments(), [refreshKey])
   const categories = useMemo(() => dbService.getCategories().filter(c => c.type === 'csr_activity'), [refreshKey])
   const activities = useMemo(() => dbService.getCSRActivities(), [refreshKey])

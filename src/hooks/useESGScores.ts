@@ -36,7 +36,7 @@ function buildScoringInput(
   const scoringEmissions = transactions.map(tx => ({
     amount: tx.calculated_emission_kg ?? 0,
     month:  new Date(tx.date ?? new Date()),
-    scope:  (tx.scope ?? 1) as 1 | 2 | 3,
+    scope:  (tx.source_type === 'manufacturing' || tx.source_type === 'fleet' ? 1 : tx.source_type === 'expense' ? 2 : 3) as 1 | 2 | 3,
   }))
 
   // CSR activities: use participations to calculate rates per activity

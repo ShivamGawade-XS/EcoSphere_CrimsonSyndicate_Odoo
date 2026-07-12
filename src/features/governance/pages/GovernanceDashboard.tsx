@@ -49,6 +49,7 @@ export function GovernanceDashboard() {
 
   // Load Data
   const currentUser = useMemo(() => dbService.getCurrentUser(), [refreshKey])
+  const org = useMemo(() => dbService.getOrganization(), [refreshKey])
   const depts = useMemo(() => dbService.getDepartments(), [refreshKey])
   const profiles = useMemo(() => dbService.getProfiles(), [refreshKey])
   const rawPolicies = useMemo(() => dbService.getPolicies(), [refreshKey])

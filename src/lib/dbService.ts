@@ -60,6 +60,10 @@ const KEYS = {
   webhooks: 'ecosphere_webhooks',
   apiTokens: 'ecosphere_api_tokens',
   auditLogs: 'ecosphere_audit_logs',
+  auditEvents: 'ecosphere_audit_events',
+  integrityChecksums: 'ecosphere_integrity_checksums',
+  odooConfig: 'ecosphere_odoo_config',
+  odooLogs: 'ecosphere_odoo_logs',
 }
 
 // ─── Initial Database Seeding ─────────────────────────────────
@@ -118,6 +122,94 @@ export function initializeLocalDatabase(force = false) {
     { id: 'log-3', timestamp: '2026-07-12T08:12:55Z', username: 'Sarah Jenkins', action: 'Created new supplier record: Sunrise Steel Pvt. Ltd.', ipAddress: '192.168.1.144', status: 'success' },
     { id: 'log-4', timestamp: '2026-07-11T16:32:00Z', username: 'Admin System', action: 'Scheduled quarterly internal governance audit', ipAddress: '10.0.4.15', status: 'success' },
     { id: 'log-5', timestamp: '2026-07-11T14:10:00Z', username: 'David Chen', action: 'Acknowledged ESG Environmental Code of Conduct policy', ipAddress: '192.168.1.102', status: 'success' }
+  ])
+
+  seed(KEYS.auditEvents, [
+    {
+      id: 'aud-ev-1',
+      org_id: 'org-greentech-123',
+      table_name: 'carbon_transactions',
+      record_id: 'tx-1',
+      event_type: 'INSERT',
+      user_id: 'user-esg',
+      user_email: 'esg@greentech.demo',
+      user_role: 'esg_manager',
+      before_data: null,
+      after_data: { id: 'tx-1', department_id: 'dept-mfg', quantity: 1500, calculated_emission_kg: 3750, source_type: 'purchase', date: '2026-07-12' },
+      changed_fields: null,
+      ip_address: '192.168.1.144',
+      user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      created_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString()
+    },
+    {
+      id: 'aud-ev-2',
+      org_id: 'org-greentech-123',
+      table_name: 'compliance_issues',
+      record_id: 'issue-1',
+      event_type: 'UPDATE',
+      user_id: 'user-esg',
+      user_email: 'esg@greentech.demo',
+      user_role: 'esg_manager',
+      before_data: { id: 'issue-1', status: 'open', resolution_notes: null },
+      after_data: { id: 'issue-1', status: 'resolved', resolution_notes: 'Sensors recalibrated and verified.' },
+      changed_fields: ['status', 'resolution_notes'],
+      ip_address: '192.168.1.144',
+      user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      created_at: new Date(Date.now() - 4 * 3600 * 1000).toISOString()
+    },
+    {
+      id: 'aud-ev-3',
+      org_id: 'org-greentech-123',
+      table_name: 'policies',
+      record_id: 'pol-1',
+      event_type: 'INSERT',
+      user_id: 'user-esg',
+      user_email: 'esg@greentech.demo',
+      user_role: 'esg_manager',
+      before_data: null,
+      after_data: { id: 'pol-1', title: 'ESG Procurement Policy', status: 'active' },
+      changed_fields: null,
+      ip_address: '192.168.1.144',
+      user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      created_at: new Date(Date.now() - 24 * 3600 * 1000).toISOString()
+    }
+  ])
+  seed(KEYS.integrityChecksums, [
+    {
+      id: 'checksum-1',
+      org_id: 'org-greentech-123',
+      period: 'June 2026',
+      checksum: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      record_count: 148,
+      computed_at: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
+      computed_by: 'user-esg',
+      verified: true
+    },
+    {
+      id: 'checksum-2',
+      org_id: 'org-greentech-123',
+      period: 'May 2026',
+      checksum: '8f4384e539b7b9f87498c8e9f902ea9a0a1f0a2d3e4b5c6d7e8f9a0b1c2d3e4f',
+      record_count: 132,
+      computed_at: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+      computed_by: 'user-esg',
+      verified: true
+    }
+  ])
+  seed(KEYS.odooConfig, {
+    odooUrl: 'https://greentech-enterprise.odoo.com',
+    dbName: 'greentech_prod',
+    apiKey: 'apiKey_demo_987654321',
+    models: ['purchase.order', 'mrp.production', 'account.move'],
+    mappings: [
+      { category: 'All / Saleable / Manufacturing', factorId: 'ef-1' },
+      { category: 'Utilities / Electricity', factorId: 'ef-2' }
+    ],
+    lastSync: new Date(Date.now() - 6 * 3600 * 1000).toISOString()
+  })
+  seed(KEYS.odooLogs, [
+    { id: 'log-1', timestamp: new Date(Date.now() - 6 * 3600 * 1000).toISOString(), event: 'Odoo Webhook: Received mrp.production done', details: 'Created manufacturing transaction ref MO-9921', status: 'success' },
+    { id: 'log-2', timestamp: new Date(Date.now() - 12 * 3600 * 1000).toISOString(), event: 'Odoo Webhook: Received purchase.order confirmed', details: 'Created 2 purchase transactions ref PO-4001', status: 'success' }
   ])
 
   // Default active user is the ESG Manager for complete demo experience
@@ -810,6 +902,146 @@ export const dbService = {
     }
     set(KEYS.auditLogs, [newLog, ...list])
     return newLog
+  },
+
+  // ─── CSRD Audit Trail ───
+  getAuditEvents: (filters?: { tableName?: string; userId?: string; eventType?: string }) => {
+    let events = get<any[]>(KEYS.auditEvents)
+    if (filters) {
+      if (filters.tableName) events = events.filter(e => e.table_name === filters.tableName)
+      if (filters.userId) events = events.filter(e => e.user_id === filters.userId)
+      if (filters.eventType) events = events.filter(e => e.event_type === filters.eventType)
+    }
+    return events.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  },
+  logAuditEvent: (tableName: string, recordId: string, eventType: 'INSERT' | 'UPDATE' | 'DELETE', beforeData: any, afterData: any) => {
+    const events = get<any[]>(KEYS.auditEvents)
+    const user = dbService.getCurrentUser()
+    
+    // Calculate changed fields for UPDATE
+    let changedFields: string[] | null = null
+    if (eventType === 'UPDATE' && beforeData && afterData) {
+      changedFields = Object.keys(beforeData).filter(k => JSON.stringify(beforeData[k]) !== JSON.stringify(afterData[k]))
+    }
+
+    const newEvent = {
+      id: `aud-ev-${Date.now()}`,
+      org_id: 'org-greentech-123',
+      table_name: tableName,
+      record_id: recordId,
+      event_type: eventType,
+      user_id: user.id,
+      user_email: user.email,
+      user_role: user.role,
+      before_data: beforeData,
+      after_data: afterData,
+      changed_fields: changedFields,
+      ip_address: '127.0.0.1',
+      user_agent: navigator.userAgent,
+      created_at: new Date().toISOString()
+    }
+    set(KEYS.auditEvents, [newEvent, ...events])
+    
+    // Also add to auditLogs for legacy compatibility
+    dbService.addAuditLog(user.full_name, `${eventType} on ${tableName} (ID: ${recordId})`, '127.0.0.1')
+    return newEvent
+  },
+
+  // ─── Data Integrity Checksums ───
+  getIntegrityChecksums: () => get<any[]>(KEYS.integrityChecksums).sort((a, b) => new Date(b.computed_at).getTime() - new Date(a.computed_at).getTime()),
+  computeIntegrityChecksum: (period: string) => {
+    const list = get<any[]>(KEYS.integrityChecksums)
+    const user = dbService.getCurrentUser()
+    
+    // Generate a simple deterministic pseudo-hash of current ESG records
+    const txCount = get<any[]>(KEYS.txs).length
+    const csrCount = get<any[]>(KEYS.participations).length
+    const issueCount = get<any[]>(KEYS.issues).length
+    const policyCount = get<any[]>(KEYS.policies).length
+    const seed = `${txCount}-${csrCount}-${issueCount}-${policyCount}-${period}`
+    
+    // Pseudosha-256 for mock mode demonstration
+    let hash = 0
+    for (let i = 0; i < seed.length; i++) {
+      const char = seed.charCodeAt(i)
+      hash = (hash << 5) - hash + char
+      hash = hash & hash // Convert to 32bit integer
+    }
+    const hexHash = Math.abs(hash).toString(16).padStart(8, '0') + 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'.slice(8)
+
+    const newChecksum = {
+      id: `checksum-${Date.now()}`,
+      org_id: 'org-greentech-123',
+      period,
+      checksum: hexHash,
+      record_count: txCount + csrCount + issueCount + policyCount,
+      computed_at: new Date().toISOString(),
+      computed_by: user.full_name,
+      verified: true
+    }
+    
+    const updatedList = list.filter(c => c.period !== period)
+    set(KEYS.integrityChecksums, [newChecksum, ...updatedList])
+    return newChecksum
+  },
+
+  // ─── Odoo Integration Config ───
+  getOdooConfig: () => get<any>(KEYS.odooConfig),
+  saveOdooConfig: (config: any) => {
+    set(KEYS.odooConfig, config)
+    dbService.logAuditEvent('organisations', 'org-greentech-123', 'UPDATE', { odooConfig: dbService.getOdooConfig() }, { odooConfig: config })
+  },
+  getOdooLogs: () => get<any[]>(KEYS.odooLogs),
+  addOdooLog: (event: string, details: string, status: 'success' | 'error') => {
+    const list = get<any[]>(KEYS.odooLogs)
+    const newLog = {
+      id: `olog-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      event,
+      details,
+      status
+    }
+    set(KEYS.odooLogs, [newLog, ...list].slice(0, 100))
+    return newLog
+  },
+  runOdooSync: (startDate: string, endDate: string) => {
+    // Generate mock historical emissions
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const days = Math.round((end.getTime() - start.getTime()) / 86400000)
+    const count = Math.min(20, Math.max(3, Math.round(days / 10)))
+
+    const odooRefs = Array.from({ length: count }, (_, i) => i % 2 === 0 ? `PO-${1000 + i}` : `MO-${8000 + i}`)
+    const factors = get<EmissionFactor[]>(KEYS.factors)
+    const depts = get<Department[]>(KEYS.depts)
+    
+    let createdCount = 0
+    let totalEmissions = 0
+
+    for (let i = 0; i < count; i++) {
+      const quantity = Math.round(50 + Math.random() * 500)
+      const factor = factors[i % factors.length] || factors[0]
+      const dept = depts[i % depts.length] || depts[0]
+      const targetDate = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime())).toISOString().split('T')[0]
+
+      const txInput = {
+        department_id: dept.id,
+        emission_factor_id: factor.id,
+        quantity,
+        auto_calculated: true,
+        source_type: (i % 2 === 0 ? 'purchase' : 'manufacturing') as any,
+        date: targetDate,
+        notes: `[Auto-sync via Odoo backfill] Ref: ${odooRefs[i]}`
+      }
+      
+      const newTx = dbService.addCarbonTransaction(txInput)
+      dbService.logAuditEvent('carbon_transactions', newTx.id, 'INSERT', null, newTx)
+      totalEmissions += newTx.calculated_emission_kg
+      createdCount++
+    }
+
+    dbService.addOdooLog('Manual backfill sync initiated', `Synced ${createdCount} records from ${startDate} to ${endDate}. Total emissions: ${Math.round(totalEmissions)} kg CO₂e`, 'success')
+    return { transactionsCreated: createdCount, totalEmissions: Math.round(totalEmissions) }
   },
 }
 

@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { dbService, initializeLocalDatabase } from '@/lib/dbService'
+import { AuditTrailPage } from './AuditTrailPage'
+import { OdooIntegrationPage } from './OdooIntegrationPage'
 import { useToast } from '@/contexts/ToastContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
@@ -36,7 +38,7 @@ import {
 } from 'lucide-react'
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'org' | 'toggles' | 'depts' | 'users' | 'redemptions' | 'billing' | 'integrations' | 'audit'>('org')
+  const [activeTab, setActiveTab] = useState<'org' | 'toggles' | 'depts' | 'users' | 'redemptions' | 'billing' | 'integrations' | 'audit' | 'csrd_audit' | 'odoo'>('org')
   const [refreshKey, setRefreshKey] = useState(0)
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -344,6 +346,8 @@ export function SettingsPage() {
           { id: 'users', label: 'Users' },
           { id: 'billing', label: 'Billing & Quotas' },
           { id: 'integrations', label: 'Integrations & API' },
+          { id: 'odoo', label: 'Odoo ERP' },
+          { id: 'csrd_audit', label: 'CSRD Audit Trail' },
           { id: 'audit', label: 'Audit Logs' },
           { id: 'redemptions', label: 'Redemptions' },
           { id: 'toggles', label: 'Feature Toggles' },
@@ -1073,6 +1077,18 @@ export function SettingsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'csrd_audit' && (
+        <div className="animate-fade-in">
+          <AuditTrailPage />
+        </div>
+      )}
+
+      {activeTab === 'odoo' && (
+        <div className="animate-fade-in">
+          <OdooIntegrationPage />
         </div>
       )}
 

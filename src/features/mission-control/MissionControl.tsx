@@ -1,7 +1,11 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { dbService } from '@/lib/dbService'
 import { queryAI } from '@/lib/groq'
-import { calculateLinearForecast, formatCO2 } from '@/lib/utils'
+import { formatCO2 } from '@/lib/utils'
+import { buildESGContext } from '@/lib/ai/context-builder'
+import { buildSystemPrompt, buildStarterQuestions } from '@/lib/ai/system-prompt'
+import { holtsWintersForecast } from '@/lib/forecasting/holt-winters'
+import { detectAnomalies } from '@/lib/forecasting/anomaly-detector'
 import {
   Zap,
   TrendingDown,
@@ -14,6 +18,10 @@ import {
   Sliders,
   Send,
   Info,
+  RefreshCw,
+  Database,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -23,8 +31,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
+  ReferenceDot,
 } from 'recharts'
 
 export function MissionControl() {
@@ -36,6 +43,13 @@ export function MissionControl() {
   const [csrParticipation, setCsrParticipation] = useState(20)
   const [resolveOverdue, setResolveOverdue] = useState(false)
   const [isSimulating, setIsSimulating] = useState(false)
+
+  // AI Context State
+  const [esgContext, setEsgContext] = useState<any>(null)
+  const [contextLoading, setContextLoading] = useState(false)
+  const [contextLastLoaded, setContextLastLoaded] = useState<Date | null>(null)
+  const [showContextPanel, setShowContextPanel] = useState(false)
+  const contextCacheRef = useRef<{ ts: number; data: any } | null>(null)
 
   // Chat State
   const [messages, setMessages] = useState<{sender: string; text: string; sources?: string[]; ts: string}[]>([
@@ -94,18 +108,85 @@ export function MissionControl() {
     ]
   }, [avgTotal])
 
-  // Linear Regression Forecast (next 3 months)
+  // Holt-Winters Triple Exponential Smoothing Forecast (replaces linear regression)
   const forecastScores = useMemo(() => {
     const historicalValues = historicalScores.map(h => h.score)
-    const forecastValues = calculateLinearForecast(historicalValues, 3)
-    
+    let forecastArr: number[] = []
+    let lowerArr: number[] = []
+    let upperArr: number[] = []
+    try {
+      const hwResult = holtsWintersForecast(historicalValues, 3)
+      forecastArr = hwResult.forecast
+      lowerArr = hwResult.confidenceInterval.lower
+      upperArr = hwResult.confidenceInterval.upper
+    } catch {
+      const last = historicalValues[historicalValues.length - 1] ?? avgTotal
+      forecastArr = [last + 0.5, last + 0.8, last + 1.0]
+      lowerArr    = [last - 2.5, last - 3.5, last - 4.5]
+      upperArr    = [last + 2.5, last + 3.5, last + 4.5]
+    }
+    const futureMonths = ['Jul', 'Aug', 'Sep']
     return [
-      ...historicalScores.map(h => ({ ...h, type: 'actual', lower: h.score, upper: h.score })),
-      { month: 'Jul', score: forecastValues[0], type: 'forecast', lower: forecastValues[0] - 2, upper: forecastValues[0] + 2 },
-      { month: 'Aug', score: forecastValues[1], type: 'forecast', lower: forecastValues[1] - 4, upper: forecastValues[1] + 4 },
-      { month: 'Sep', score: forecastValues[2], type: 'forecast', lower: forecastValues[2] - 5, upper: forecastValues[2] + 5 },
+      ...historicalScores.map(h => ({ ...h, type: 'actual', lower: h.score, upper: h.score, isAnomaly: false })),
+      ...futureMonths.map((month, i) => ({
+        month,
+        score: parseFloat((forecastArr[i] ?? avgTotal).toFixed(1)),
+        type: 'forecast',
+        lower: parseFloat((lowerArr[i] ?? avgTotal - 3).toFixed(1)),
+        upper: parseFloat((upperArr[i] ?? avgTotal + 3).toFixed(1)),
+        isAnomaly: false,
+      }))
     ]
+  }, [historicalScores, avgTotal])
+
+  // Anomaly Detection on historical data
+  const anomalyPoints = useMemo(() => {
+    const values = historicalScores.map(h => h.score)
+    const dates  = historicalScores.map((_, i) => `2026-0${i + 1}-01`)
+    try {
+      const result = detectAnomalies(values, dates, 3, 2.0)
+      return result.anomalies.map(a => ({
+        month:  historicalScores[a.index]?.month ?? '',
+        score:  a.value,
+        zScore: a.zScore,
+      }))
+    } catch {
+      return []
+    }
   }, [historicalScores])
+
+  // Load ESG context (cached 5 minutes)
+  const loadContext = useCallback(async (force = false) => {
+    const CACHE_MS = 5 * 60 * 1000
+    const now = Date.now()
+    if (!force && contextCacheRef.current && (now - contextCacheRef.current.ts) < CACHE_MS) {
+      setEsgContext(contextCacheRef.current.data)
+      return
+    }
+    setContextLoading(true)
+    try {
+      const ctx = await buildESGContext()
+      contextCacheRef.current = { ts: now, data: ctx }
+      setEsgContext(ctx)
+      setContextLastLoaded(new Date())
+    } catch {
+      // Silently fail — copilot will fall back to basic context
+    } finally {
+      setContextLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { loadContext() }, [loadContext])
+
+  // Dynamic starter questions from context
+  const starterQuestions = useMemo(() => {
+    if (!esgContext) return [
+      'How can I improve my Environmental score?',
+      'Which compliance issues should I prioritize?',
+      'What is our GRI readiness status?',
+    ]
+    return buildStarterQuestions(esgContext).slice(0, 3)
+  }, [esgContext])
 
   // Simulated Score calculation (What-if)
   const simulatedScores = useMemo(() => {
@@ -201,27 +282,29 @@ export function MissionControl() {
     setChatInput('')
     setIsTyping(true)
 
-    // Construct context
-    const context = `
-      Organization Name: ${org.name}
-      Current Scores - Environmental: ${avgE}, Social: ${avgS}, Governance: ${avgG}, Total ESG: ${avgTotal}
-      Open Compliance Issues count: ${issues.length} (Overdue count: ${issues.filter(i => new Date(i.due_date) < new Date()).length})
-      Goals track: ${goals.length} active targets.
-    `
+    // Build rich system prompt from ESG context if available
+    const systemPrompt = esgContext
+      ? buildSystemPrompt(esgContext)
+      : `You are EcoSphere AI Decision Copilot. Organization: ${org.name}. Scores - E: ${avgE}, S: ${avgS}, G: ${avgG}, Total: ${avgTotal}. Open issues: ${issues.length}. Answer concisely in under 4 sentences, cite real org numbers.`
+
+    // Keep last 6 exchanges (12 messages) as conversation memory
+    const recentMessages = messages.slice(-12)
 
     // Call proxy Edge Function
     try {
       const response = await queryAI(
-        messages.concat(userMessage),
-        `You are EcoSphere AI Decision Copilot. Use the context provided to answer the user's questions about optimizing their ESG metrics. Keep answers concise, business-oriented, and reference organization metrics directly. Keep descriptions under 4 sentences.`,
-        { context }
+        recentMessages.concat(userMessage),
+        systemPrompt,
+        esgContext ? { context: JSON.stringify(esgContext, null, 2) } : undefined
       )
       setMessages((prev) => [
         ...prev,
         {
           sender: 'copilot',
           text: response.content,
-          sources: ['ESG AI Copilot Service (Edge Proxy)'],
+          sources: esgContext
+            ? [`${esgContext.orgName} Live Data`, 'ESG AI Copilot (GRI-aligned)']
+            : ['ESG AI Copilot Service (Edge Proxy)'],
           ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         },
       ])
@@ -424,26 +507,65 @@ export function MissionControl() {
           </button>
         </div>
 
-        {/* Col 3: Forecasting Chart */}
+        {/* Col 3: Forecasting Chart — Holt-Winters */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-          <h3 className="font-bold text-base mb-4">ESG Trend Projection</h3>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="font-bold text-base">ESG Trend Projection</h3>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Holt-Winters exponential smoothing · 95% CI band</p>
+            </div>
+            {anomalyPoints.length > 0 && (
+              <span className="text-[10px] bg-amber-500/10 text-amber-600 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">
+                {anomalyPoints.length} anomal{anomalyPoints.length === 1 ? 'y' : 'ies'}
+              </span>
+            )}
+          </div>
           <div className="h-44">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={forecastScores}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <AreaChart data={forecastScores} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="hwActual" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="hwForecast" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#818cf8" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#818cf8" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff12" />
                 <XAxis dataKey="month" stroke="#888888" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis stroke="#888888" fontSize={11} tickLine={false} axisLine={false} domain={[60, 90]} />
-                <Tooltip />
-                <Area type="monotone" dataKey="score" stroke="#10b981" strokeWidth={2.5} fill="none" />
-                {/* Confidence intervals represented as band */}
-                <Area type="monotone" dataKey="upper" stroke="none" fill="#10b981" fillOpacity={0.1} />
-                <Area type="monotone" dataKey="lower" stroke="none" fill="#10b981" fillOpacity={0.1} />
+                <Tooltip
+                  contentStyle={{ background: '#1a1a2e', border: '1px solid #ffffff20', borderRadius: 8, fontSize: 11 }}
+                  formatter={(v: any, name: string) => [typeof v === 'number' ? v.toFixed(1) : v, name]}
+                />
+                {/* Confidence band */}
+                <Area type="monotone" dataKey="upper" stroke="none" fill="url(#hwForecast)" fillOpacity={1} />
+                <Area type="monotone" dataKey="lower" stroke="none" fill="url(#hwForecast)" fillOpacity={0.5} />
+                {/* Actual line */}
+                <Area type="monotone" dataKey="score" stroke="#10b981" strokeWidth={2.5} fill="url(#hwActual)" dot={false} name="ESG Score" />
+                {/* Anomaly markers */}
+                {anomalyPoints.map((a: { month: string; score: number; zScore: number }, i: number) => (
+                  <ReferenceDot
+                    key={i}
+                    x={a.month}
+                    y={a.score}
+                    r={5}
+                    fill="#f59e0b"
+                    stroke="#fff"
+                    strokeWidth={1.5}
+                    label={{ value: '⚠', position: 'top', fontSize: 10 }}
+                  />
+                ))}
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 text-xs bg-muted/40 border border-border/80 p-3 rounded-xl">
-            <span className="font-semibold text-emerald-600 block mb-0.5">Forecast Range: {forecastScores[8].lower.toFixed(0)}–{forecastScores[8].upper.toFixed(0)} by September</span>
-            <p className="text-[10px] text-muted-foreground">Projection based on current trends — assumes no major operational changes</p>
+          <div className="mt-3 text-xs bg-muted/40 border border-border/80 p-3 rounded-xl">
+            <span className="font-semibold text-emerald-600 block mb-0.5">
+              Forecast Range: {forecastScores[forecastScores.length - 1]?.lower.toFixed(0)}–{forecastScores[forecastScores.length - 1]?.upper.toFixed(0)} by September
+            </span>
+            <p className="text-[10px] text-muted-foreground">Holt-Winters triple smoothing · assumes steady trend</p>
           </div>
         </div>
       </div>
@@ -490,15 +612,49 @@ export function MissionControl() {
       </div>
 
       {/* Row 3: Copilot Panel */}
-      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col h-[400px]">
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col h-[480px]">
         {/* Panel Header */}
         <div className="p-4 border-b border-border bg-gradient-to-r from-emerald-500/10 to-teal-500/5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-emerald-500" />
             <h3 className="font-bold text-sm">AI ESG Decision Copilot</h3>
+            {esgContext && (
+              <span className="text-[10px] text-muted-foreground">
+                · Context: {esgContext.lastUpdated ? new Date(esgContext.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'loaded'}
+              </span>
+            )}
           </div>
-          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Llama-3.3-70B Live</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => loadContext(true)}
+              title="Refresh ESG context"
+              className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${contextLoading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setShowContextPanel(prev => !prev)}
+              title="Toggle data context"
+              className="flex items-center gap-1 p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-[10px] font-semibold"
+            >
+              <Database className="w-3.5 h-3.5" />
+              {showContextPanel ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded font-bold">Llama-3.3-70B Live</span>
+          </div>
         </div>
+
+        {/* Context data panel (collapsible) */}
+        {showContextPanel && esgContext && (
+          <div className="border-b border-border bg-muted/20 p-4 text-[10px] font-mono text-muted-foreground overflow-auto max-h-32">
+            <pre className="whitespace-pre-wrap">{JSON.stringify({
+              scores: esgContext.currentScores,
+              topRisks: esgContext.topRisks?.slice(0, 2),
+              goalsOffTrack: esgContext.goalsOffTrack?.length,
+              openIssues: esgContext.openComplianceIssues?.length,
+            }, null, 2)}</pre>
+          </div>
+        )}
 
         {/* Chat Feed */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -541,18 +697,35 @@ export function MissionControl() {
           <div ref={chatEndRef} />
         </div>
 
-        {/* Chat input */}
-        <form onSubmit={handleSendMessage} className="p-3 border-t border-border bg-muted/10 flex gap-2">
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            placeholder="e.g. How can we improve our social score by 10 points?"
-            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-          <button type="submit" className="p-2 bg-primary text-primary-foreground hover:bg-primary/95 rounded-lg transition-colors shadow-sm">
-            <Send className="w-4 h-4" />
-          </button>
+        {/* Chat input + Starter questions */}
+        <form onSubmit={handleSendMessage} className="p-3 border-t border-border bg-muted/10 space-y-2">
+          {/* Starter questions */}
+          {messages.length <= 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              {starterQuestions.map((q, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setChatInput(q)}
+                  className="text-[10px] px-2.5 py-1.5 rounded-full border border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-all"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="e.g. How can we improve our social score by 10 points?"
+              className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <button type="submit" className="p-2 bg-primary text-primary-foreground hover:bg-primary/95 rounded-lg transition-colors shadow-sm">
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
         </form>
       </div>
     </div>

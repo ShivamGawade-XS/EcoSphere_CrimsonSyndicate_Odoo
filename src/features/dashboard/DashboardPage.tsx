@@ -6,12 +6,13 @@ import {
 import {
   Leaf, Users, Shield, Zap, TrendingUp, TrendingDown, Minus,
   Award, AlertTriangle, CheckCircle2, Clock, RefreshCw, ArrowRight,
-  Activity, Target, Building2
+  Activity, Target, Building2, FileCheck, ExternalLink
 } from 'lucide-react'
 import { ScoreBadge, ScorePill } from '@/components/shared/ScoreBadge'
 import { useESGScores } from '@/hooks/useESGScores'
 import { dbService } from '@/lib/dbService'
 import { formatEmission, relativeDate } from '@/lib/esgUtils'
+import { getGRIDisclosureMap, type GRIDisclosure } from '@/lib/gri/disclosure-map'
 
 // ─── Quick actions ────────────────────────────────────────────────────────────
 const quickActions = [
@@ -65,6 +66,22 @@ export function DashboardPage() {
   const csrActivities = useMemo(() => dbService.getCSRActivities(), [refreshKey])
   const challenges = useMemo(() => dbService.getChallenges(), [refreshKey])
   const txs = useMemo(() => dbService.getCarbonTransactions(), [refreshKey])
+
+  // GRI Readiness Computation
+  const griReadiness = useMemo(() => {
+    const disclosures = getGRIDisclosureMap()
+    const total = disclosures.length
+    const met = disclosures.filter(d => d.status === 'met').length
+    const partial = disclosures.filter(d => d.status === 'partial').length
+    const gap = disclosures.filter(d => d.status === 'gap').length
+    const byPillar = {
+      E: disclosures.filter(d => d.pillar === 'E'),
+      S: disclosures.filter(d => d.pillar === 'S'),
+      G: disclosures.filter(d => d.pillar === 'G'),
+    }
+    const coveragePct = Math.round(((met + partial * 0.5) / total) * 100)
+    return { total, met, partial, gap, byPillar, coveragePct }
+  }, [])
   const [refreshing, setRefreshing] = useState(false)
   const [envPulsing, setEnvPulsing] = useState(false)
 
@@ -300,6 +317,89 @@ export function DashboardPage() {
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* ── GRI 2021 Readiness Widget ── */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-indigo-500/10">
+              <FileCheck className="w-4 h-4 text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm">GRI 2021 Readiness</h3>
+              <p className="text-xs text-muted-foreground">Standards disclosure coverage</p>
+            </div>
+          </div>
+          <a href="/reports" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-indigo-400 transition-colors">
+            View Full Report <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center gap-5">
+          {/* Circular readiness gauge */}
+          <div className="flex flex-col items-center justify-center flex-shrink-0">
+            <div className="relative w-24 h-24">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="10" className="text-muted/30" />
+                <circle
+                  cx="50" cy="50" r="40" fill="none"
+                  stroke="url(#griGrad)" strokeWidth="10"
+                  strokeDasharray={`${griReadiness.coveragePct * 2.51} 251`}
+                  strokeLinecap="round"
+                />
+                <defs>
+                  <linearGradient id="griGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#6366f1" />
+                    <stop offset="100%" stopColor="#a855f7" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xl font-bold">{griReadiness.coveragePct}%</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">Overall Coverage</p>
+          </div>
+
+          {/* Pillar breakdown */}
+          <div className="flex-1 space-y-3">
+            {(['E', 'S', 'G'] as const).map((pillar) => {
+              const items = griReadiness.byPillar[pillar]
+              const metCount = items.filter(d => d.status === 'met').length
+              const pct = items.length > 0 ? Math.round((metCount / items.length) * 100) : 0
+              const color = pillar === 'E' ? 'bg-emerald-500' : pillar === 'S' ? 'bg-blue-500' : 'bg-amber-500'
+              const label = pillar === 'E' ? 'Environmental' : pillar === 'S' ? 'Social' : 'Governance'
+              return (
+                <div key={pillar}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="font-medium">{label}</span>
+                    <span className="text-muted-foreground">{metCount}/{items.length} disclosures</span>
+                  </div>
+                  <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Summary badges */}
+          <div className="flex flex-row md:flex-col gap-2 flex-shrink-0">
+            <div className="text-center px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+              <p className="text-lg font-bold text-emerald-400">{griReadiness.met}</p>
+              <p className="text-[10px] text-muted-foreground">Met</p>
+            </div>
+            <div className="text-center px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <p className="text-lg font-bold text-amber-400">{griReadiness.partial}</p>
+              <p className="text-[10px] text-muted-foreground">Partial</p>
+            </div>
+            <div className="text-center px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20">
+              <p className="text-lg font-bold text-red-400">{griReadiness.gap}</p>
+              <p className="text-[10px] text-muted-foreground">Gaps</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ── Quick Actions + Goals progress ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

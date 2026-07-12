@@ -23,8 +23,10 @@ import {
 import ExcelJS from 'exceljs'
 import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
+import { GRIDisclosureReport } from './GRIDisclosureReport'
 
 export function ReportsPage() {
+  const [activeTab, setActiveTab] = useState<'custom' | 'gri'>('custom')
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Report Builder State
@@ -332,34 +334,63 @@ export function ReportsPage() {
             Generate compliant standard disclosure reports and build custom filters.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleExportPDF}
-            className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 rounded-lg text-xs font-semibold transition-colors"
-          >
-            <FileText className="w-3.5 h-3.5" /> PDF
-          </button>
-          <button
-            onClick={handleExportExcel}
-            className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition-colors"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" /> Excel
-          </button>
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-2 px-3 py-2 bg-secondary text-secondary-foreground border border-border hover:bg-muted rounded-lg text-xs font-semibold transition-colors"
-          >
-            <Download className="w-3.5 h-3.5" /> CSV
-          </button>
-        </div>
+        {activeTab === 'custom' && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleExportPDF}
+              className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 rounded-lg text-xs font-semibold transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" /> PDF
+            </button>
+            <button
+              onClick={handleExportExcel}
+              className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition-colors"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" /> Excel
+            </button>
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-2 px-3 py-2 bg-secondary text-secondary-foreground border border-border hover:bg-muted rounded-lg text-xs font-semibold transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" /> CSV
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left Col: Query/Filter Builder */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-5 h-fit">
-          <h3 className="font-bold text-sm flex items-center gap-2 pb-3 border-b border-border">
-            <Filter className="w-4 h-4 text-primary" /> Report Filters
-          </h3>
+      {/* Tabs */}
+      <div className="flex border-b border-border bg-card p-1 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('custom')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+            activeTab === 'custom'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Custom Report Builder
+        </button>
+        <button
+          onClick={() => setActiveTab('gri')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+            activeTab === 'gri'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          GRI Content Index
+        </button>
+      </div>
+
+      {activeTab === 'gri' ? (
+        <GRIDisclosureReport />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Left Col: Query/Filter Builder */}
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-5 h-fit">
+            <h3 className="font-bold text-sm flex items-center gap-2 pb-3 border-b border-border">
+              <Filter className="w-4 h-4 text-primary" /> Report Filters
+            </h3>
 
           {/* Department Selector */}
           <div>
@@ -606,7 +637,8 @@ export function ReportsPage() {
             )}
           </div>
         </div>
-      </div>
+        </div>
+      )}
     </div>
   )
 }
