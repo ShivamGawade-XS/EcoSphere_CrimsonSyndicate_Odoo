@@ -1,195 +1,147 @@
-# 🌿 EcoSphere AI — ESG Management Platform
+# 🌿 EcoSphere — ESG Management Platform
 
-> **Team:** CrimsonSyndicate | **Event:** Odoo Hackathon '26 — Virtual Round
-
-EcoSphere AI is a full-stack **ESG (Environmental, Social & Governance) Management Platform** that transforms sustainability data into a real-time decision engine. Built on React 18, TypeScript, Supabase, and powered by Groq AI.
-
----
-
-## 👥 Team Members
-
-| Name | GitHub | Role |
-|------|--------|------|
-| Shivam Mahesh Gawade (Lead) | [@ShivamGawade-XS](https://github.com/ShivamGawade-XS) | Team Leader |
-| Sharan Andrade | [@24ec23-shade](https://github.com/24ec23-shade) | Developer |
-| Rahul Rathod | [@24ec17-svg](https://github.com/24ec17-svg) | Developer |
-| Ashwith Ashok Shetty | [@24co35-ops](https://github.com/24co35-ops) | Developer |
+> **Team:** CrimsonSyndicate · **Hackathon:** Odoo Hackathon 2025
+>
+> An all-in-one Environmental, Social and Governance (ESG) management platform that integrates operational data, employee participation, and intelligent reporting into a single dashboard.
 
 ---
 
-## 🎯 Problem Statement
+## 🚀 Features
 
-Organizations cannot answer:
-- Why did our ESG score decrease?
-- Which department is causing the problem?
-- What action provides the highest ESG improvement for the lowest cost?
+### 🌱 Environmental Module
+- **Carbon Transaction Ledger** — Log and auto-calculate CO₂ emissions by department using configurable emission factors
+- **Emission Factor Registry** — Custom CRUD + CSV bulk upload for factors across purchase, fleet, manufacturing, and expense categories
+- **Sustainability Goals Tracker** — Visual progress bars with deadline-aware off-track alerts (>20% behind linear trajectory)
+- **Stacked Area Charts** — Recharts-powered monthly carbon trend visualizations per department
 
-**EcoSphere AI answers all of this** — tracking what's happening, explaining why, predicting what comes next, and recommending what to do.
+### 🤝 Social Module
+- **CSR Activity Board** — Join CSR events with seat-limit enforcement and manager approval workflows
+- **Workforce Diversity Dashboard** — Gender breakdown by department using Recharts stacked bar charts
+- **Training Completion Logs** — Employee training records with bulk CSV import support
 
----
+### ⚖️ Governance Module
+- **Policy Register** — Draft → Active → Archived policy lifecycle with employee sign-off tracking
+- **Audit Tracker** — Schedule and manage compliance audits with findings documentation
+- **Compliance Issues Board** — Severity-tagged issues with owner assignment and overdue detection
 
-## 🚀 Core Modules
+### 🎮 Gamification Engine
+- **Green Wallet** — Employee XP balance, badge gallery, and point transaction audit trail
+- **Challenges Board** — Join, progress, and submit evidence for ESG challenges
+- **Reward Catalog** — Atomic redemption with stock management and point deduction
+- **Leaderboards** — Individual XP rank, challenges completed, and department ESG rank
 
-### 🌍 Environmental
-- Carbon transaction tracking (manual + auto-calculated from ERP sources)
-- Emission factors library with CSV bulk import
-- Sustainability goals with progress tracking and trajectory alerts
-- Department emissions heatmap (department × month grid)
+### 🧠 Mission Control (AI Dashboard)
+- **What-If Scenario Sliders** — Model impact of fleet EV %, solar capacity, CSR participation, compliance resolution
+- **3-Month ESG Forecasting** — Linear regression projections with confidence bands
+- **AI Decision Copilot** — Groq Llama 3.3 integration for context-aware strategic recommendations
+- **Executive Decision Cards** — Risk summaries and recommended actions
 
-### 🤝 Social
-- CSR activity management with participation approval workflow
-- Evidence upload and requirement enforcement
-- Diversity metrics entry and visualization
-- Training completion tracker
+### 📊 Reports & Analytics
+- **Custom Report Builder** — Filter by department, module, and date range
+- **AI Executive Summary** — One-click LLM-generated narrative from filtered data
+- **Multi-format Export** — PDF (jsPDF + html2canvas), Excel multi-sheet (SheetJS), CSV
 
-### 🏛️ Governance
-- ESG policy lifecycle (Draft → Active → Archived)
-- Policy acknowledgement tracking with automated reminders
-- Audit management with findings documentation
-- Compliance issue tracking — severity-coded with mandatory ownership
-
-### 🎮 Gamification
-- Challenge system with full lifecycle enforcement
-- XP and points economy
-- Badge auto-award engine
-- Reward catalog with atomic redemption
-- Three leaderboard types
-
-### 🤖 Mission Control (AI Layer)
-- Executive Decision Cards
-- What-if Impact Simulator
-- AI ESG Copilot (Groq Llama 3.3-70B)
-- ESG Forecast (linear regression)
+### ⚙️ Settings & Administration
+- **ESG Weight Sliders** — Dynamic E/S/G weighting that auto-balances to 100%
+- **Department Hierarchy** — Create and manage org-wide department tree
+- **User Role Management** — Assign roles and department memberships
+- **Reward Fulfilment Log** — Track pending and fulfilled reward claims
 
 ---
 
 ## 🛠️ Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Frontend | React 18 + TypeScript |
-| Styling | Tailwind CSS + shadcn/ui |
-| Backend & DB | Supabase (PostgreSQL + Auth + Storage + Realtime) |
-| State Management | TanStack Query v5 |
-| Routing | React Router v6 |
-| Forms | React Hook Form + Zod |
+|---|---|
+| UI Framework | React 18 + TypeScript |
+| Build Tool | Vite 5 |
 | Charts | Recharts |
-| AI | Groq API (llama-3.3-70b-versatile) |
+| Styling | Tailwind CSS |
+| UI Components | Radix UI primitives |
+| Icons | Lucide React |
 | PDF Export | jsPDF + html2canvas |
 | Excel Export | SheetJS (xlsx) |
-| Build | Vite |
+| AI Integration | Groq Cloud API (Llama 3.3 70B) |
+| State/DB | localStorage abstraction (dbService) |
 
 ---
 
-## ⚙️ Getting Started
+## 📦 Getting Started
 
 ### Prerequisites
 - Node.js 18+
-- npm or pnpm
-- Supabase project (free tier works)
-- Groq API key (free tier works)
+- npm 9+
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/ShivamGawade-XS/EcoSphere_CrimsonSyndicate_Odoo.git
 cd EcoSphere_CrimsonSyndicate_Odoo
-
-# Install dependencies
 npm install
-
-# Set up environment variables
-cp .env.example .env.local
-# Edit .env.local with your Supabase URL and anon key
-
-# Start development server
-npm run dev
 ```
 
 ### Environment Variables
 
+Create a `.env` file in the project root:
+
 ```env
-VITE_SUPABASE_URL=https://[your-project-id].supabase.co
-VITE_SUPABASE_ANON_KEY=[your-anon-key]
-VITE_GROQ_API_KEY=[your-groq-api-key]
+# Optional: Groq API key for AI features (falls back to simulated insights if not set)
+VITE_GROQ_API_KEY=your_groq_api_key_here
 ```
 
-### Database Setup
+Get a free Groq API key at [console.groq.com](https://console.groq.com).
 
-Run the migration files in order in your Supabase SQL Editor:
+### Running Locally
 
-```
-supabase/migrations/001_core_tables.sql
-supabase/migrations/002_master_data.sql
-supabase/migrations/003_transactional_tables.sql
-supabase/migrations/004_rls_policies.sql
-supabase/migrations/005_functions.sql
-supabase/migrations/006_indexes.sql
+```bash
+npm run dev
 ```
 
----
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-## 📁 Project Structure
+### Production Build
 
-```
-ecosphere-ai/
-├── src/
-│   ├── components/
-│   │   ├── ui/                 # shadcn/ui primitives
-│   │   ├── charts/             # Recharts wrappers
-│   │   ├── layout/             # Sidebar, TopBar, Shell
-│   │   └── shared/             # Reusable components
-│   ├── features/
-│   │   ├── environmental/      # Environmental module
-│   │   ├── social/             # Social module
-│   │   ├── governance/         # Governance module
-│   │   ├── gamification/       # Challenges, XP, badges, rewards
-│   │   ├── reports/            # Report components + builder
-│   │   ├── mission-control/    # Mission Control dashboard
-│   │   └── settings/           # All settings pages
-│   ├── hooks/                  # Global custom hooks
-│   ├── lib/                    # Utilities, Supabase client
-│   └── types/                  # TypeScript type definitions
-├── supabase/
-│   ├── migrations/             # SQL schema files
-│   ├── functions/              # Edge Functions (Deno)
-│   └── seed/
-│       └── demo_data.sql
-└── public/
+```bash
+npm run build
+npm run preview
 ```
 
 ---
 
-## 🎮 Demo Credentials
+## 🏗️ Project Structure
 
-After loading demo data:
-
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@greentech.demo | Demo@1234 |
-| Executive | ceo@greentech.demo | Demo@1234 |
-| ESG Manager | esg@greentech.demo | Demo@1234 |
-| Dept Head | mfg-head@greentech.demo | Demo@1234 |
-| Employee | employee1@greentech.demo | Demo@1234 |
+```
+src/
+├── features/
+│   ├── environmental/     # Carbon tracking, emission factors, goals
+│   ├── social/            # CSR activities, diversity, training
+│   ├── governance/        # Policies, audits, compliance issues
+│   ├── gamification/      # Wallet, challenges, rewards, leaderboard
+│   ├── mission-control/   # AI dashboard, forecasting, scenarios
+│   ├── reports/           # Custom reports and multi-format export
+│   └── settings/          # Org config, departments, users
+├── lib/
+│   ├── dbService.ts       # localStorage persistence layer + ESG score engine
+│   ├── mockData.ts        # Default seed data for demo
+│   └── esgUtils.ts        # Shared utility helpers (formatters, score calcs)
+├── types/
+│   └── index.ts           # All TypeScript domain types
+└── main.tsx               # App entry — initializes DB and renders root
+```
 
 ---
 
-## 📊 ESG Scoring Engine
+## 👥 Team — CrimsonSyndicate
 
-```
-Environmental Score = 100 - deductions based on goal trajectory
-Social Score = (CSR Rate × 40) + (Training Rate × 30) + (Diversity × 30)
-Governance Score = (Policy Rate × 40) + (Audit Rate × 30) + 30 - issue penalties
-
-Department Score = (Env × env_weight%) + (Social × social_weight%) + (Gov × gov_weight%)
-Org Score = weighted average of department scores by headcount
-```
-
-Default weights: **Environmental 40% / Social 30% / Governance 30%** (configurable per org)
+| Member | Role | Contribution |
+|---|---|---|
+| **Shivam Gawade** | Team Lead & Full-Stack | Core architecture, all ESG feature modules, AI integration |
+| **Ashwith** | Frontend & Types | TypeScript type system, domain modelling, UI fixes |
+| **Rahul** | Documentation & QA | README, API docs, testing, build verification |
+| **Sharan** | DevOps & Utilities | Build config, Vite optimization, shared utility library |
 
 ---
 
-## 📜 License
+## 📄 License
 
-MIT — EcoSphere AI, CrimsonSyndicate Team, Odoo Hackathon '26
+This project was built for the **Odoo Hackathon 2025** by Team CrimsonSyndicate. All rights reserved.
