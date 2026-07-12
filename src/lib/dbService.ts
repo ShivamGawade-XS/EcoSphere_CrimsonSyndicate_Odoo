@@ -22,6 +22,7 @@ import {
   Audit,
   ESGPolicy,
   PolicyAcknowledgement,
+  TrainingRecord,
 } from '@/types'
 
 // Keys for LocalStorage
@@ -49,6 +50,7 @@ const KEYS = {
   acknowledgements: 'ecosphere_policy_acknowledgements',
   scores: 'ecosphere_department_scores',
   currentUser: 'ecosphere_current_user_id',
+  training: 'ecosphere_training_records',
 }
 
 // ─── Initial Database Seeding ─────────────────────────────────
@@ -80,6 +82,7 @@ export function initializeLocalDatabase(force = false) {
   seed(KEYS.audits, mock.defaultAudits)
   seed(KEYS.policies, mock.defaultPolicies)
   seed(KEYS.scores, [])
+  seed(KEYS.training, [])
 
   // Default active user is the ESG Manager for complete demo experience
   if (!localStorage.getItem(KEYS.currentUser)) {
@@ -496,6 +499,26 @@ export const dbService = {
       badge: badges.find(b => b.id === a.badge_id)
     }))
   },
+  awardBadge: (badgeId: string, employeeId: string) => {
+    const badgeAwards = get<BadgeAward[]>(KEYS.badgeAwards)
+    const badgesList = get<Badge[]>(KEYS.badges)
+    const badge = badgesList.find(b => b.id === badgeId)
+    if (!badge) return
+
+    const alreadyAwarded = badgeAwards.some(a => a.badge_id === badgeId && a.employee_id === employeeId)
+    if (alreadyAwarded) return
+
+    const newAward: BadgeAward = {
+      id: `award-${Date.now()}`,
+      org_id: 'org-greentech-123',
+      badge_id: badgeId,
+      employee_id: employeeId,
+      awarded_at: new Date().toISOString(),
+      awarded_by: null
+    }
+    set(KEYS.badgeAwards, [...badgeAwards, newAward])
+    dbService.addNotification(employeeId, 'badge_unlocked', `🏆 Badge Unlocked!`, `Congratulations, you unlocked the "${badge.name}" badge!`)
+  },
 
   // Rewards catalog & Atomic redemption
   getRewards: () => get<Reward[]>(KEYS.rewards),
@@ -610,6 +633,29 @@ export const dbService = {
       ...s,
       department: depts.find(d => d.id === s.department_id)
     }))
+  },
+
+  // Training Records
+  getTrainingRecords: () => {
+    const list = get<TrainingRecord[]>(KEYS.training)
+    const users = get<Profile[]>(KEYS.users)
+    const depts = get<Department[]>(KEYS.depts)
+    return list.map(t => ({
+      ...t,
+      employee: users.find(u => u.id === t.employee_id),
+      department: depts.find(d => d.id === t.department_id)
+    }))
+  },
+  addTrainingRecord: (rec: Omit<TrainingRecord, 'id' | 'org_id' | 'created_at'>) => {
+    const list = get<TrainingRecord[]>(KEYS.training)
+    const newRec: TrainingRecord = {
+      ...rec,
+      id: `train-${Date.now()}`,
+      org_id: 'org-greentech-123',
+      created_at: new Date().toISOString()
+    }
+    set(KEYS.training, [newRec, ...list])
+    return newRec
   }
 }
 

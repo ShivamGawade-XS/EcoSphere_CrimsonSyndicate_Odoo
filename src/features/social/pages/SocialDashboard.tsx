@@ -4,6 +4,8 @@ import {
   CSRActivity,
   EmployeeParticipation,
   Profile,
+  TrainingRecord,
+  Badge,
 } from '@/types'
 import {
   formatDate,
@@ -20,6 +22,11 @@ import {
   Layers,
   GraduationCap,
   Sparkles,
+  BookOpen,
+  FileQuestion,
+  Printer,
+  Check,
+  Trophy,
 } from 'lucide-react'
 import {
   BarChart,
@@ -33,7 +40,7 @@ import {
 } from 'recharts'
 
 export function SocialDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'csr' | 'diversity' | 'training'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'csr' | 'diversity' | 'training' | 'academy'>('overview')
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Load Data
@@ -42,11 +49,35 @@ export function SocialDashboard() {
   const categories = useMemo(() => dbService.getCategories().filter(c => c.type === 'csr_activity'), [refreshKey])
   const activities = useMemo(() => dbService.getCSRActivities(), [refreshKey])
   const participations = useMemo(() => dbService.getCSRParticipations(), [refreshKey])
+  const dbTrainings = useMemo(() => dbService.getTrainingRecords(), [refreshKey])
+
+  // Combine static fallback mock data with DB persisted training records
+  const trainings = useMemo(() => {
+    const defaults = [
+      { id: 'tr-1', employeeName: 'Arjun Verma', departmentName: 'Manufacturing & Operations', courseName: 'Safety & Hazard Protocols', date: '2026-06-10' },
+      { id: 'tr-2', employeeName: 'Neha Sen', departmentName: 'Logistics & Supply Chain', courseName: 'Sustainable Packaging Guide', date: '2026-06-18' },
+    ]
+    const dbFormatted = dbTrainings.map(t => ({
+      id: t.id,
+      employeeName: t.employee?.full_name || 'Unknown Employee',
+      departmentName: t.department?.name || 'General Org',
+      courseName: t.title,
+      date: t.completion_date || t.created_at.split('T')[0]
+    }))
+    return [...defaults, ...dbFormatted]
+  }, [dbTrainings])
 
   // Modals state
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState<EmployeeParticipation | null>(null)
   const [showAddTrainingModal, setShowAddTrainingModal] = useState(false)
+
+  // ESG Academy state
+  const [selectedAcademyModule, setSelectedAcademyModule] = useState<any | null>(null)
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({})
+  const [quizSubmitted, setQuizSubmitted] = useState(false)
+  const [quizPassed, setQuizPassed] = useState(false)
+  const [showCertificateModal, setShowCertificateModal] = useState<any | null>(null)
 
   // Form states
   const [newAct, setNewAct] = useState({
@@ -59,12 +90,6 @@ export function SocialDashboard() {
     department_id: '',
   })
 
-  // Mock Training Data (since no SQL table was needed, we store in LocalStorage or local state)
-  const [trainings, setTrainings] = useState<any[]>([
-    { id: 'tr-1', employeeName: 'Arjun Verma', departmentName: 'Manufacturing & Operations', courseName: 'Safety & Hazard Protocols', date: '2026-06-10' },
-    { id: 'tr-2', employeeName: 'Neha Sen', departmentName: 'Logistics & Supply Chain', courseName: 'Sustainable Packaging Guide', date: '2026-06-18' },
-  ])
-
   const [newTraining, setNewTraining] = useState({
     employeeName: '',
     departmentName: depts[0]?.name || '',
@@ -72,7 +97,6 @@ export function SocialDashboard() {
     date: new Date().toISOString().split('T')[0],
   })
 
-  // Mock Diversity Metrics
   const [diversityData, setDiversityData] = useState<any[]>([
     { department: 'Manufacturing', Male: 60, Female: 35, Other: 5 },
     { department: 'Logistics', Male: 55, Female: 40, Other: 5 },
@@ -87,10 +111,7 @@ export function SocialDashboard() {
     other: 0,
   })
 
-  // CSV status
   const [csvStatus, setCsvStatus] = useState('')
-
-  // Derived metrics
   const isManagerOrAdmin = currentUser.role === 'admin' || currentUser.role === 'esg_manager'
 
   const overallParticipationRate = useMemo(() => {
@@ -99,6 +120,107 @@ export function SocialDashboard() {
     const distinctParticipants = new Set(participations.filter(p => p.approval_status === 'approved').map(p => p.employee_id)).size
     return Math.round((distinctParticipants / totalEmployees) * 100)
   }, [depts, participations])
+
+  // ESG Academy Modules Data
+  const academyModules = useMemo(() => [
+    {
+      id: 'mod-carbon',
+      title: 'Carbon Accounting Basics',
+      category: 'environmental',
+      xpReward: 100,
+      pointsReward: 50,
+      duration: '15 mins',
+      description: 'Understand direct and indirect carbon emissions (Scope 1, 2, and 3) and greenhouse gas protocols.',
+      reading: `Greenhouse gas (GHG) emissions are categorized into three "scopes" to help organizations understand and measure their carbon footprint:
+• Scope 1: Direct emissions from sources owned or controlled by the company (e.g. burning fuel in company vehicles, boilers, or manufacturing process emissions).
+• Scope 2: Indirect emissions from the generation of purchased energy (e.g. electricity, steam, heating/cooling consumed by the company).
+• Scope 3: All other indirect emissions that occur in the company's value chain, including both upstream and downstream activities (e.g. business travel, employee commuting, waste management, product logistics, raw materials).`,
+      questions: [
+        {
+          q: 'Which scope covers direct emissions from burning fuel in company-owned delivery trucks?',
+          options: ['Scope 1', 'Scope 2', 'Scope 3', 'Scope 4'],
+          ansIndex: 0
+        },
+        {
+          q: 'Under which scope do emissions from purchased electricity consumed in offices fall?',
+          options: ['Scope 1', 'Scope 2', 'Scope 3', 'Scope 4'],
+          ansIndex: 1
+        },
+        {
+          q: 'Which of the following represents the baseline standard reference for Global Warming Potential (GWP)?',
+          options: ['Carbon Dioxide (CO2)', 'Methane (CH4)', 'Nitrous Oxide (N2O)', 'Water Vapor'],
+          ansIndex: 0
+        }
+      ]
+    },
+    {
+      id: 'mod-diversity',
+      title: 'Workforce Diversity & Inclusion',
+      category: 'social',
+      xpReward: 100,
+      pointsReward: 50,
+      duration: '10 mins',
+      description: 'Learn the principles of diversity, equity, inclusion, and safety in modern corporate structures.',
+      reading: `Social sustainability focuses on employee well-being, community impact, and fair labor practices:
+• Diversity: Ensuring fair representation across genders, backgrounds, and ages within the organization.
+• Equity: Providing equal opportunities, fair compensation, and non-discriminatory policies for career growth.
+• Inclusion: Creating a safe, welcoming, and supportive workspace environment where all employees feel valued and heard.
+• Safety: Adhering to rigorous occupational safety hazard protocols, employee health support, and preventative health practices.`,
+      questions: [
+        {
+          q: 'What is the primary goal of corporate Diversity, Equity, and Inclusion (DEI) initiatives?',
+          options: [
+            'To build a fair, representative, and supportive workplace',
+            'To reduce operational budgets and employee headcount',
+            'To bypass local regulatory compliance checks',
+            'To replace standard performance appraisal cycles'
+          ],
+          ansIndex: 0
+        },
+        {
+          q: 'Which area of ESG does employee safety and wellness training directly fall under?',
+          options: ['Environmental (E)', 'Social (S)', 'Governance (G)', 'Economic (Eco)'],
+          ansIndex: 1
+        }
+      ]
+    },
+    {
+      id: 'mod-governance',
+      title: 'Corporate Ethics & Compliance',
+      category: 'governance',
+      xpReward: 100,
+      pointsReward: 50,
+      duration: '12 mins',
+      description: 'Understand accountability, transparency, whistleblowing, and compliance structures.',
+      reading: `Corporate Governance represents the rules, practices, and processes by which a firm is directed and controlled:
+• Accountability: Clear responsibilities for executives, managers, and board members.
+• Transparency: Fair and accurate disclosure of financial statements, operational impacts, and audit results.
+• Ethical Standards: Guidelines preventing corruption, bribery, conflicts of interest, and anti-competitive practices.
+• Whistleblowing: Establishing safe, secure, and confidential report channels for ethical violations.`,
+      questions: [
+        {
+          q: 'Which of the following is a core pillar of corporate governance?',
+          options: [
+            'Accountability, transparency, and fairness',
+            'Maximizing short-term stock performance at all costs',
+            'Eliminating the need for independent external audits',
+            'Restricting employee policy acknowledgement details'
+          ],
+          ansIndex: 0
+        },
+        {
+          q: 'A whistleblowing policy is primarily designed to:',
+          options: [
+            'Provide a secure channel to report ethical violations safely',
+            'Monitor employee keyboard strokes and activity logs',
+            'Help marketing teams design brand campaigns',
+            'Track scheduled compliance audit due dates'
+          ],
+          ansIndex: 0
+        }
+      ]
+    }
+  ], [])
 
   const handleAddActivity = (e: React.FormEvent) => {
     e.preventDefault()
@@ -146,16 +268,29 @@ export function SocialDashboard() {
     e.preventDefault()
     if (!newTraining.employeeName || !newTraining.courseName) return
 
-    const newT = {
-      id: `tr-${Date.now()}`,
-      employeeName: newTraining.employeeName,
-      departmentName: newTraining.departmentName,
-      courseName: newTraining.courseName,
-      date: newTraining.date,
-    }
-    setTrainings(prev => [...prev, newT])
+    const usersList = dbService.getProfiles()
+    const employee = usersList.find(u => u.full_name.toLowerCase() === newTraining.employeeName.toLowerCase())
+    const employee_id = employee?.id || currentUser.id
+
+    const dept = depts.find(d => d.name === newTraining.departmentName)
+    const department_id = dept?.id || null
+
+    dbService.addTrainingRecord({
+      employee_id,
+      department_id,
+      title: newTraining.courseName,
+      provider: 'Internal Training',
+      category: 'esg_awareness',
+      duration_hours: 2,
+      completion_date: newTraining.date,
+      status: 'completed',
+      score: 100,
+      certificate_url: null
+    })
+
     setShowAddTrainingModal(false)
     setNewTraining({ employeeName: '', departmentName: depts[0]?.name || '', courseName: '', date: new Date().toISOString().split('T')[0] })
+    setRefreshKey(prev => prev + 1)
   }
 
   const handleDiversitySubmit = (e: React.FormEvent) => {
@@ -185,34 +320,117 @@ export function SocialDashboard() {
         const text = event.target?.result as string
         const lines = text.split('\n')
         let imported = 0
-        const newItems: any[] = []
+        const usersList = dbService.getProfiles()
 
-        // Parse: Employee Name, Department, Course Name, Date
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim()
           if (!line) continue
 
           const [name, deptName, course, date] = line.split(',')
           if (name && deptName && course && date) {
-            newItems.push({
-              id: `tr-csv-${Date.now()}-${i}`,
-              employeeName: name.replace(/"/g, '').trim(),
-              departmentName: deptName.replace(/"/g, '').trim(),
-              courseName: course.replace(/"/g, '').trim(),
-              date: date.replace(/"/g, '').trim(),
+            const employeeNameClean = name.replace(/"/g, '').trim()
+            const deptNameClean = deptName.replace(/"/g, '').trim()
+            const courseClean = course.replace(/"/g, '').trim()
+            const dateClean = date.replace(/"/g, '').trim()
+
+            const employee = usersList.find(u => u.full_name.toLowerCase() === employeeNameClean.toLowerCase())
+            const employee_id = employee?.id || currentUser.id
+
+            const dept = depts.find(d => d.name.toLowerCase() === deptNameClean.toLowerCase())
+            const department_id = dept?.id || null
+
+            dbService.addTrainingRecord({
+              employee_id,
+              department_id,
+              title: courseClean,
+              provider: 'CSV Bulk Upload',
+              category: 'esg_awareness',
+              duration_hours: 2,
+              completion_date: dateClean,
+              status: 'completed',
+              score: 100,
+              certificate_url: null
             })
             imported++
           }
         }
 
-        setTrainings(prev => [...prev, ...newItems])
         setCsvStatus(`Successfully imported ${imported} training records!`)
         setTimeout(() => setCsvStatus(''), 5000)
+        setRefreshKey(prev => prev + 1)
       } catch (err) {
         setCsvStatus('Error parsing CSV file.')
       }
     }
     reader.readAsText(file)
+  }
+
+  const handleQuizSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedAcademyModule) return
+
+    let correct = 0
+    selectedAcademyModule.questions.forEach((q: any, idx: number) => {
+      if (quizAnswers[idx] === q.ansIndex) {
+        correct++
+      }
+    })
+
+    const passed = correct === selectedAcademyModule.questions.length
+    setQuizPassed(passed)
+    setQuizSubmitted(true)
+
+    if (passed) {
+      const alreadyDone = dbTrainings.some(t => t.title === selectedAcademyModule.title && t.employee_id === currentUser.id)
+      if (!alreadyDone) {
+        dbService.addTrainingRecord({
+          employee_id: currentUser.id,
+          department_id: currentUser.department_id,
+          title: selectedAcademyModule.title,
+          provider: 'EcoSphere ESG Academy',
+          category: selectedAcademyModule.category === 'environmental' ? 'esg_awareness' :
+                    selectedAcademyModule.category === 'social' ? 'safety' : 'compliance',
+          duration_hours: 1,
+          completion_date: new Date().toISOString().split('T')[0],
+          status: 'completed',
+          score: 100,
+          certificate_url: null
+        })
+
+        currentUser.total_points += selectedAcademyModule.pointsReward
+        currentUser.total_xp += selectedAcademyModule.xpReward
+        dbService.updateProfile(currentUser)
+
+        dbService.addXPTransaction(
+          currentUser.id,
+          selectedAcademyModule.xpReward,
+          'manual',
+          null,
+          `ESG Academy: Completed ${selectedAcademyModule.title}`
+        )
+
+        dbService.addNotification(
+          currentUser.id,
+          'badge_unlocked',
+          '🎓 Module Completed!',
+          `You earned ${selectedAcademyModule.xpReward} XP and ${selectedAcademyModule.pointsReward} Points for completing ${selectedAcademyModule.title}!`
+        )
+
+        // Auto scholar badge check
+        const finalTrainings = dbService.getTrainingRecords().filter(t => t.employee_id === currentUser.id)
+        const completedModuleTitles = academyModules.map(m => m.title)
+        const allCompleted = completedModuleTitles.every(title => finalTrainings.some(t => t.title === title))
+
+        if (allCompleted) {
+          const scholarBadge = dbService.getBadges().find(b => b.name === 'ESG Scholar')
+          if (scholarBadge) {
+            dbService.awardBadge(scholarBadge.id, currentUser.id)
+          }
+        }
+
+        setRefreshKey(prev => prev + 1)
+      }
+    }
   }
 
   return (
@@ -264,6 +482,7 @@ export function SocialDashboard() {
           { id: 'csr', label: 'CSR Activities & approvals' },
           { id: 'diversity', label: 'Diversity Metrics' },
           { id: 'training', label: 'Training Tracker' },
+          { id: 'academy', label: 'ESG Academy (Quizzes)' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -564,6 +783,250 @@ export function SocialDashboard() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeTab === 'academy' && (
+        <div className="space-y-6">
+          {!selectedAcademyModule ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {academyModules.map((module) => {
+                const isCompleted = dbTrainings.some(
+                  (t) => t.title === module.title && t.employee_id === currentUser.id
+                )
+                return (
+                  <div
+                    key={module.id}
+                    className="bg-card border border-border rounded-2xl p-6 flex flex-col justify-between hover:border-white/20 transition-all group shadow-sm"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          module.category === 'environmental' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                          module.category === 'social' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                          'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        }`}>
+                          {module.category.toUpperCase()}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{module.duration}</span>
+                      </div>
+                      <h4 className="font-bold text-lg group-hover:text-white transition-colors mb-2">{module.title}</h4>
+                      <p className="text-sm text-muted-foreground mb-4 line-clamp-3">{module.description}</p>
+                    </div>
+                    <div className="pt-4 border-t border-border/50 flex items-center justify-between">
+                      <div className="flex items-center gap-1">
+                        <Trophy className="w-4 h-4 text-yellow-400" />
+                        <span className="text-xs font-medium text-foreground">+{module.xpReward} XP</span>
+                      </div>
+                      {isCompleted ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setShowCertificateModal(module)}
+                            className="text-xs text-teal-400 hover:underline flex items-center gap-1"
+                          >
+                            <Award className="w-3.5 h-3.5" /> Certificate
+                          </button>
+                          <span className="flex items-center gap-1 text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded">
+                            <Check className="w-3 h-3" /> Completed
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setSelectedAcademyModule(module)
+                            setQuizAnswers({})
+                            setQuizSubmitted(false)
+                            setQuizPassed(false)
+                          }}
+                          className="px-3.5 py-1.5 bg-primary text-primary-foreground hover:bg-primary/95 text-xs font-bold rounded-lg transition-colors"
+                        >
+                          Start Module
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column: Learning Content */}
+              <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-border/50">
+                  <h3 className="font-bold text-lg flex items-center gap-2">
+                    <BookOpen className="text-teal-400 w-5 h-5" /> Learning Material
+                  </h3>
+                  <button
+                    onClick={() => setSelectedAcademyModule(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    &larr; Back to Modules
+                  </button>
+                </div>
+                <h4 className="font-bold text-xl text-white">{selectedAcademyModule.title}</h4>
+                <div className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed bg-white/5 p-4 rounded-xl border border-white/5">
+                  {selectedAcademyModule.reading}
+                </div>
+              </div>
+
+              {/* Right Column: Quiz */}
+              <div className="bg-card border border-border rounded-2xl p-6">
+                <h3 className="font-bold text-lg flex items-center gap-2 pb-3 border-b border-border/50 mb-4">
+                  <FileQuestion className="text-teal-400 w-5 h-5" /> Module Quiz
+                </h3>
+
+                {!quizSubmitted ? (
+                  <form onSubmit={handleQuizSubmit} className="space-y-6">
+                    {selectedAcademyModule.questions.map((q: any, qIdx: number) => (
+                      <div key={qIdx} className="space-y-2">
+                        <p className="text-sm font-semibold text-foreground">
+                          {qIdx + 1}. {q.q}
+                        </p>
+                        <div className="space-y-1.5">
+                          {q.options.map((opt: string, oIdx: number) => (
+                            <label
+                              key={oIdx}
+                              className={`flex items-center gap-3 p-2.5 rounded-lg border text-sm cursor-pointer transition-colors ${
+                                quizAnswers[qIdx] === oIdx
+                                  ? 'border-primary bg-primary/5 text-foreground'
+                                  : 'border-border hover:bg-muted/30 text-muted-foreground'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name={`q-${qIdx}`}
+                                required
+                                checked={quizAnswers[qIdx] === oIdx}
+                                onChange={() => setQuizAnswers({ ...quizAnswers, [qIdx]: oIdx })}
+                                className="accent-primary"
+                              />
+                              {opt}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="submit"
+                      className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold hover:bg-primary/95 transition-all text-sm"
+                    >
+                      Submit Answers
+                    </button>
+                  </form>
+                ) : (
+                  <div className="text-center py-6 space-y-4 animate-fade-in">
+                    {quizPassed ? (
+                      <>
+                        <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                          <Check className="w-8 h-8" />
+                        </div>
+                        <h4 className="font-bold text-lg text-white">Module Passed! 100% Correct</h4>
+                        <p className="text-xs text-muted-foreground">
+                          Congratulations! You have completed the training course and earned rewards.
+                        </p>
+                        <div className="flex gap-3 justify-center text-xs">
+                          <span className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 px-2.5 py-1 rounded-md font-semibold">
+                            +{selectedAcademyModule.xpReward} XP
+                          </span>
+                          <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-md font-semibold">
+                            +{selectedAcademyModule.pointsReward} Points
+                          </span>
+                        </div>
+                        <div className="pt-4 flex flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowCertificateModal(selectedAcademyModule)}
+                            className="w-full bg-teal-500 text-white py-2 rounded-lg font-semibold text-sm hover:bg-teal-600 transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <Award className="w-4 h-4" /> View Certificate
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAcademyModule(null)
+                              setQuizSubmitted(false)
+                            }}
+                            className="w-full border border-border py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors"
+                          >
+                            Close Module
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 text-red-400 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                          <XCircle className="w-8 h-8" />
+                        </div>
+                        <h4 className="font-bold text-lg text-white">Quiz Failed</h4>
+                        <p className="text-xs text-muted-foreground">
+                          You missed one or more questions. Review the study material on the left and try again!
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuizSubmitted(false)
+                            setQuizAnswers({})
+                          }}
+                          className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-semibold text-sm hover:bg-primary/95 transition-all"
+                        >
+                          Retry Quiz
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Certificate Modal */}
+          {showCertificateModal && (
+            <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-card border border-border w-full max-w-2xl rounded-2xl shadow-2xl p-8 relative flex flex-col justify-between overflow-hidden">
+                <button
+                  onClick={() => setShowCertificateModal(null)}
+                  className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+
+                {/* Print Frame Wrapper */}
+                <div id="esg-certificate-frame" className="border-4 border-double border-teal-500/40 p-8 rounded-xl bg-white/5 space-y-6 text-center select-none">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Trophy className="w-8 h-8 text-yellow-500 animate-pulse" />
+                    <span className="text-xs uppercase tracking-widest text-teal-400 font-bold">EcoSphere ESG Academy</span>
+                  </div>
+                  <h2 className="text-3xl font-serif font-semibold text-white tracking-wide">Certificate of Completion</h2>
+                  <p className="text-xs text-muted-foreground italic">This is proudly awarded to</p>
+                  <h3 className="text-2xl font-bold text-teal-400 my-4 border-b border-white/10 pb-2 max-w-sm mx-auto">
+                    {currentUser.full_name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
+                    for successfully demonstrating mastery and passing the evaluation for the training curriculum:
+                  </p>
+                  <h4 className="text-lg font-bold text-white uppercase tracking-wider">{showCertificateModal.title}</h4>
+                  <div className="pt-6 grid grid-cols-2 gap-8 text-left max-w-md mx-auto text-xs text-muted-foreground border-t border-white/5">
+                    <div>
+                      <p>Institution: <span className="text-foreground font-medium">EcoSphere Org</span></p>
+                      <p>Date: <span className="text-foreground font-medium">{new Date().toLocaleDateString()}</span></p>
+                    </div>
+                    <div className="text-right">
+                      <p className="italic font-serif">EcoSphere ESG Committee</p>
+                      <p className="text-[10px] text-muted-foreground/60">Verification ID: ESG-ACAD-{Date.now().toString(36).toUpperCase()}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action button */}
+                <button
+                  onClick={() => window.print()}
+                  className="mt-6 w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-sm"
+                >
+                  <Printer className="w-4 h-4" /> Print Certificate
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
