@@ -23,6 +23,12 @@ import {
   Download,
   Calendar,
   Layers,
+  Building2,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldX,
+  ClipboardList,
+  X,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -38,7 +44,7 @@ import {
 } from 'recharts'
 
 export function EnvironmentalDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'factors' | 'goals'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'factors' | 'goals' | 'suppliers'>('overview')
 
   // State triggers for refresh
   const [refreshKey, setRefreshKey] = useState(0)
@@ -54,6 +60,29 @@ export function EnvironmentalDashboard() {
   const [showFactorModal, setShowFactorModal] = useState(false)
   const [showTransactionModal, setShowTransactionModal] = useState(false)
   const [showGoalModal, setShowGoalModal] = useState(false)
+  const [showSupplierModal, setShowSupplierModal] = useState(false)
+
+  // Supplier Scorecard State — stored in localStorage via dbService key
+  const suppliers = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('ecosphere_suppliers')
+      return raw ? JSON.parse(raw) as SupplierRecord[] : getDefaultSuppliers()
+    } catch {
+      return getDefaultSuppliers()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
+
+  const [newSupplier, setNewSupplier] = useState({
+    name: '',
+    category: 'Raw Materials',
+    country: '',
+    envScore: 70,
+    socialScore: 70,
+    govScore: 70,
+    lastAudit: new Date().toISOString().split('T')[0],
+    certifications: '',
+  })
 
   // Form states
   const [newFactor, setNewFactor] = useState({
@@ -168,6 +197,41 @@ export function EnvironmentalDashboard() {
       }
     })
   }, [goals])
+
+  // Supplier Actions
+  const handleAddSupplier = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newSupplier.name || !newSupplier.country) return
+    const id = `sup_${Date.now()}`
+    const overall = Math.round((newSupplier.envScore * 0.4 + newSupplier.socialScore * 0.3 + newSupplier.govScore * 0.3))
+    const risk: 'low' | 'medium' | 'high' = overall >= 70 ? 'low' : overall >= 50 ? 'medium' : 'high'
+    const updated = [
+      ...suppliers,
+      {
+        id,
+        name: newSupplier.name,
+        category: newSupplier.category,
+        country: newSupplier.country,
+        envScore: Number(newSupplier.envScore),
+        socialScore: Number(newSupplier.socialScore),
+        govScore: Number(newSupplier.govScore),
+        overallScore: overall,
+        riskLevel: risk,
+        lastAudit: newSupplier.lastAudit,
+        certifications: newSupplier.certifications.split(',').map(s => s.trim()).filter(Boolean),
+      }
+    ]
+    localStorage.setItem('ecosphere_suppliers', JSON.stringify(updated))
+    setNewSupplier({ name: '', category: 'Raw Materials', country: '', envScore: 70, socialScore: 70, govScore: 70, lastAudit: new Date().toISOString().split('T')[0], certifications: '' })
+    setShowSupplierModal(false)
+    setRefreshKey(prev => prev + 1)
+  }
+
+  const handleDeleteSupplier = (id: string) => {
+    const updated = suppliers.filter((s: SupplierRecord) => s.id !== id)
+    localStorage.setItem('ecosphere_suppliers', JSON.stringify(updated))
+    setRefreshKey(prev => prev + 1)
+  }
 
   // Actions
   const handleAddFactor = (e: React.FormEvent) => {
@@ -336,6 +400,15 @@ export function EnvironmentalDashboard() {
             </button>
           )}
         </div>
+        {activeTab === 'suppliers' && (
+          <button
+            onClick={() => setShowSupplierModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/95 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Add Supplier
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -345,6 +418,7 @@ export function EnvironmentalDashboard() {
           { id: 'transactions', label: 'Transactions' },
           { id: 'factors', label: 'Emission Factors' },
           { id: 'goals', label: 'Sustainability Goals' },
+          { id: 'suppliers', label: 'Supplier Scorecard' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -930,6 +1004,309 @@ export function EnvironmentalDashboard() {
           </div>
         </div>
       )}
+
+      {/* ── Supplier Scorecard Tab ── */}
+      {activeTab === 'suppliers' && (
+        <div className="space-y-6">
+          {/* KPI Row */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[
+              { label: 'Total Suppliers', value: suppliers.length, icon: Building2, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+              { label: 'Low Risk', value: suppliers.filter((s: SupplierRecord) => s.riskLevel === 'low').length, icon: ShieldCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+              { label: 'Medium Risk', value: suppliers.filter((s: SupplierRecord) => s.riskLevel === 'medium').length, icon: ShieldAlert, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+              { label: 'High Risk', value: suppliers.filter((s: SupplierRecord) => s.riskLevel === 'high').length, icon: ShieldX, color: 'text-red-500', bg: 'bg-red-500/10' },
+            ].map(({ label, value, icon: Icon, color, bg }) => (
+              <div key={label} className="bg-card border border-border rounded-2xl p-5 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">{label}</p>
+                  <p className={`text-3xl font-extrabold mt-1 ${color}`}>{value}</p>
+                </div>
+                <div className={`w-11 h-11 ${bg} rounded-xl flex items-center justify-center`}>
+                  <Icon className={`w-5 h-5 ${color}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Supplier Table */}
+          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-border flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-emerald-500" />
+              <h3 className="font-bold text-base">Supply Chain ESG Registry</h3>
+              <span className="ml-auto text-xs text-muted-foreground">{suppliers.length} suppliers tracked</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left px-5 py-3 font-semibold text-muted-foreground">Supplier</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Category</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Country</th>
+                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground">E Score</th>
+                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground">S Score</th>
+                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground">G Score</th>
+                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Overall</th>
+                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Risk</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Last Audit</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Certifications</th>
+                    <th className="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suppliers.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="text-center py-12 text-muted-foreground">
+                        No suppliers yet. Click "Add Supplier" to register your first vendor.
+                      </td>
+                    </tr>
+                  ) : (
+                    suppliers.map((s: SupplierRecord) => (
+                      <tr key={s.id} className="border-b border-border hover:bg-muted/20 transition-colors">
+                        <td className="px-5 py-4 font-semibold">{s.name}</td>
+                        <td className="px-4 py-4 text-muted-foreground">{s.category}</td>
+                        <td className="px-4 py-4 text-muted-foreground">{s.country}</td>
+                        <td className="px-4 py-4 text-center">
+                          <span className={`font-bold ${getScoreColor(s.envScore)}`}>{s.envScore}</span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className={`font-bold ${getScoreColor(s.socialScore)}`}>{s.socialScore}</span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className={`font-bold ${getScoreColor(s.govScore)}`}>{s.govScore}</span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className={`text-lg font-extrabold ${getScoreColor(s.overallScore)}`}>{s.overallScore}</span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                            s.riskLevel === 'low' ? 'bg-emerald-100 text-emerald-700' :
+                            s.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {s.riskLevel === 'low' ? <ShieldCheck className="w-3 h-3" /> : s.riskLevel === 'medium' ? <ShieldAlert className="w-3 h-3" /> : <ShieldX className="w-3 h-3" />}
+                            {s.riskLevel.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-muted-foreground text-xs">{formatDate(s.lastAudit)}</td>
+                        <td className="px-4 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            {s.certifications.length > 0 ? s.certifications.map((c: string) => (
+                              <span key={c} className="bg-blue-50 text-blue-700 text-[10px] font-semibold px-1.5 py-0.5 rounded">{c}</span>
+                            )) : <span className="text-muted-foreground text-xs">—</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <button
+                            onClick={() => handleDeleteSupplier(s.id)}
+                            className="text-muted-foreground hover:text-red-500 transition-colors"
+                            title="Remove supplier"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Supplier Modal */}
+      {showSupplierModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-emerald-500" />
+                <h3 className="font-bold text-lg">Register New Supplier</h3>
+              </div>
+              <button onClick={() => setShowSupplierModal(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAddSupplier} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-semibold mb-1">Supplier Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newSupplier.name}
+                    onChange={e => setNewSupplier(p => ({ ...p, name: e.target.value }))}
+                    placeholder="e.g. Sunrise Steel Pvt. Ltd."
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Category</label>
+                  <select
+                    value={newSupplier.category}
+                    onChange={e => setNewSupplier(p => ({ ...p, category: e.target.value }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    {['Raw Materials', 'Logistics', 'Energy', 'IT Services', 'Packaging', 'Other'].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Country *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newSupplier.country}
+                    onChange={e => setNewSupplier(p => ({ ...p, country: e.target.value }))}
+                    placeholder="e.g. India"
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Environmental Score (0–100)</label>
+                  <input
+                    type="number" min={0} max={100}
+                    value={newSupplier.envScore}
+                    onChange={e => setNewSupplier(p => ({ ...p, envScore: Number(e.target.value) }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Social Score (0–100)</label>
+                  <input
+                    type="number" min={0} max={100}
+                    value={newSupplier.socialScore}
+                    onChange={e => setNewSupplier(p => ({ ...p, socialScore: Number(e.target.value) }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Governance Score (0–100)</label>
+                  <input
+                    type="number" min={0} max={100}
+                    value={newSupplier.govScore}
+                    onChange={e => setNewSupplier(p => ({ ...p, govScore: Number(e.target.value) }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Last Audit Date</label>
+                  <input
+                    type="date"
+                    value={newSupplier.lastAudit}
+                    onChange={e => setNewSupplier(p => ({ ...p, lastAudit: e.target.value }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-semibold mb-1">Certifications (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={newSupplier.certifications}
+                    onChange={e => setNewSupplier(p => ({ ...p, certifications: e.target.value }))}
+                    placeholder="e.g. ISO 14001, SA8000, B Corp"
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowSupplierModal(false)} className="px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted/50">
+                  Cancel
+                </button>
+                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/95">
+                  Register Supplier
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+// ── Supplier types and seed data ────────────────────────────────────────────
+interface SupplierRecord {
+  id: string
+  name: string
+  category: string
+  country: string
+  envScore: number
+  socialScore: number
+  govScore: number
+  overallScore: number
+  riskLevel: 'low' | 'medium' | 'high'
+  lastAudit: string
+  certifications: string[]
+}
+
+function getDefaultSuppliers(): SupplierRecord[] {
+  return [
+    {
+      id: 'sup_001',
+      name: 'Sunrise Steel Pvt. Ltd.',
+      category: 'Raw Materials',
+      country: 'India',
+      envScore: 62,
+      socialScore: 74,
+      govScore: 68,
+      overallScore: 67,
+      riskLevel: 'medium',
+      lastAudit: '2026-04-10',
+      certifications: ['ISO 14001'],
+    },
+    {
+      id: 'sup_002',
+      name: 'GreenPath Logistics',
+      category: 'Logistics',
+      country: 'Germany',
+      envScore: 88,
+      socialScore: 82,
+      govScore: 90,
+      overallScore: 87,
+      riskLevel: 'low',
+      lastAudit: '2026-05-22',
+      certifications: ['ISO 14001', 'SA8000', 'EcoVadis Gold'],
+    },
+    {
+      id: 'sup_003',
+      name: 'ChemCore Industries',
+      category: 'Raw Materials',
+      country: 'China',
+      envScore: 38,
+      socialScore: 45,
+      govScore: 50,
+      overallScore: 43,
+      riskLevel: 'high',
+      lastAudit: '2025-11-05',
+      certifications: [],
+    },
+    {
+      id: 'sup_004',
+      name: 'SolarPower Solutions',
+      category: 'Energy',
+      country: 'India',
+      envScore: 95,
+      socialScore: 80,
+      govScore: 85,
+      overallScore: 88,
+      riskLevel: 'low',
+      lastAudit: '2026-06-01',
+      certifications: ['B Corp', 'ISO 50001'],
+    },
+    {
+      id: 'sup_005',
+      name: 'PackRight Ltd.',
+      category: 'Packaging',
+      country: 'UK',
+      envScore: 72,
+      socialScore: 68,
+      govScore: 75,
+      overallScore: 72,
+      riskLevel: 'low',
+      lastAudit: '2026-03-18',
+      certifications: ['FSC Certified'],
+    },
+  ]
 }
